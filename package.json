@@ -1,0 +1,20 @@
+{
+  "name": "application-name",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "async": "*",
+    "tar": "*",
+    "gridfs-stream": "*",
+    "mongoose": "*",
+    "temp": "*",
+    "path": "*",
+    "wrench": "*",
+    "winston": "*",
+    "fstream": "*",
+    "findit":, "*"
+  }
+}
