@@ -20,23 +20,23 @@ exports = module.exports;
 exports.actOnGitFiles = function actOnGitFiles(action, callback) {
     var locals = {};
 
-    winston.info('Acting on git files.')
+    winston.info('Acting on git files.');
 
-    winston.info('Finding all GitRepos.')
+    winston.info('Finding all GitRepos.asdafd');
     mdb.GitRepo.find(function (err, repos) {
         winston.info('Found %d repos; mapping action.', repos.length);
 
         async.map(repos, function (repo, callback) {
             var locals = {};
 
-            winston.info('Mapping to repo %s at %s', repo.fileId, repo.url);
+            winston.info('Mapping to repo %s at %s', repo.fileId.toString(), repo.url);
 
             async.series([
                 // Find out if archive file is in GFS.
                 function (callback) {
                     if (repo.fileId) {
-                        winston.info("Searching for archive file %s in GFS.", repo.fileId);
-                        mdb.gfs.files.find({ _id: ObjectId(repo.fileId) }).count(function (err, count) {
+                        winston.info("Searching for archive file %s in GFS.", repo.fileId.toString());
+                        mdb.gfs.files.find({ _id: repo.fileId }).count(function (err, count) {
                             if (err) { callback(err); }
                             else {
                                 locals.inGfs = count > 0;
@@ -55,7 +55,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                 function (callback) {
                     // If archive file is in GFS, pull it out and unzip it.
                     if (locals.inGfs) {
-                        winston.info("Archive file %s found in GFS.", repo.fileId);
+                        winston.info("Archive file %s found in GFS.", repo.fileId.toString());
                         locals.extractPath = temp.path();
                         async.series([
                             // Pulling the file out.
@@ -63,10 +63,10 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                                 temp.open('gitrepo', function (err, info) {                                    
                                     if (err) { callback(err); }
                                     else {
-                                        winston.info("Loading file %s from GFS to %s", repo.fileId, info.path);
+                                        winston.info("Loading file %s from GFS to %s", repo.fileId.toString(), info.path);
 
                                         locals.archivePath = info.path;
-                                        readStream = mdb.gfs.createReadStream(ObjectId(repo.fileId));
+                                        readStream = mdb.gfs.createReadStream(repo.fileId);
                                         readStream.on('end', function () {
                                             winston.info("ReadStream closed.");
                                             fs.close(info.fd, function (err) {
@@ -120,7 +120,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                     // Otherwise, clone it and save it.
                     else {
                         locals.gitDirPath = temp.path();                        
-                        winston.info("Archive file %s not found; cloning from repository to %s.", repo.fileId, locals.gitDirPath);
+                        winston.info("Archive file %s not found; cloning from repository to %s.", repo.fileId.toString(), locals.gitDirPath);
                         git.clone(repo.url, locals.gitDirPath, function (err) {
                             if (err) { callback(err); }
                             else {
@@ -133,7 +133,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
 
                 // Perform the action.
                 function (callback) {
-                    winston.info("Performing action on %s", repo.fileId);
+                    winston.info("Performing action on %s", repo.fileId.toString());
                     action(repo, locals.gitDirPath, function (err, result) {
                         if (err) { callback(err) }
                         else {
@@ -145,7 +145,6 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                 // Final callback; attempt to perform cleanup and return result.
                 function (err) {
                     winston.info ("Final ");
-                    callback(err, {repo: repo, result: locals.result});
 
                     if (err) {
                         winston.error(err);                        
@@ -164,7 +163,9 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                         deletePath = locals.gitDirPath;
                     }
                     winston.info("Attempting cleanup of temporary directory %s", deletePath);
-                    wrench.rmdirRecursive(deletePath, false, function (err) {if (err) {winston.error(err);}});
+                    //wrench.rmdirRecursive(deletePath, false, function (err) {if (err) {winston.error(err);}});
+
+                    callback(err, {repo: repo, result: locals.result});
                 }
             );
         },
@@ -178,7 +179,7 @@ exports.storeAlteredRepo = function storeDirectory(repo, gitDirPath, callback) {
     async.series([
         // Put files into archive.
         function (callback) {
-            winston.info("Packing archive for %s to %s", repo.fileId, locals.archivePath);
+            winston.info("Packing archive for %s to %s", repo.fileId.toString(), locals.archivePath);
 
             writer = fstream.Writer({path: locals.archivePath})
                 .on('error', function () {
@@ -203,9 +204,9 @@ exports.storeAlteredRepo = function storeDirectory(repo, gitDirPath, callback) {
 
         // Save archive to GFS
         function (callback) {
-            winston.info("Saving archive from %s to GFS for repo %s", locals.archivePath, repo.fileId);
+            winston.info("Saving archive from %s to GFS for repo %s", locals.archivePath, repo.fileId.toString());
             read = fs.createReadStream(locals.archivePath);
-            write = gfs.createWriteStream({
+            write = mdb.gfs.createWriteStream({
                 _id: repo.fileId,
                 mode: 'w'
             });
@@ -243,7 +244,7 @@ exports.updateGitAction = function updateGitAction(repo, gitDirPath, callback) {
     async.series([
         // Perform a pull on the git repository.
         function (callback) {
-            winston.info("Pulling git repository for %s at ", repo.fileId, gitDirPath);
+            winston.info("Pulling git repository for %s at ", repo.fileId.toString(), gitDirPath);
             git.pull(gitDirPath, function (err, stdout, stderr) {
                 winston.info("Stdout: %s", stdout);
                 winston.info("Stderr: %s", stderr);
@@ -254,12 +255,7 @@ exports.updateGitAction = function updateGitAction(repo, gitDirPath, callback) {
         function (callback) {
             exports.storeAlteredRepo(repo, gitDirPath, callback);
         }],
-
-        function (err) {
-            if (err) {
-                winston.error(err);
-            }
-        }
+        callback
     );
 }
 
