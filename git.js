@@ -22,7 +22,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
 
     winston.info('Acting on git files.');
 
-    winston.info('Finding all GitRepos.asdafd');
+    winston.info('Finding all GitRepos.');
     mdb.GitRepo.find(function (err, repos) {
         winston.info('Found %d repos; mapping action.', repos.length);
 
@@ -60,34 +60,21 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                         async.series([
                             // Pulling the file out.
                             function (callback) {
-                                temp.open('gitrepo', function (err, info) {                                    
-                                    if (err) { callback(err); }
-                                    else {
-                                        winston.info("Loading file %s from GFS to %s", repo.fileId.toString(), info.path);
+                                locals.archivePath = temp.path();
+                                var writeStream = fs.createWriteStream(locals.archivePath);
+                                winston.info("Loading file %s from GFS to %s", repo.fileId.toString(), locals.archivePath);
 
-                                        locals.archivePath = info.path;
-                                        readStream = mdb.gfs.createReadStream(repo.fileId);
-                                        readStream.on('end', function () {
-                                            winston.info("ReadStream closed.");
-                                            fs.close(info.fd, function (err) {
-                                                if (err) { callback(err); }
-                                                else {callback();}
-                                            });
-                                        });                                        
-                                        readStream.on('data', function (chunk) {
-                                            winston.info("ReadStream chunk");
-                                            fs.write(info.fd, chunk, 0, chunk.length, null, function (err) {});
-                                        });
-                                    }
-                                });                                
+                                readStream = mdb.gfs.createReadStream(repo.fileId);
+                                writeStream.on('close', callback);
+                                readStream.pipe(writeStream);
                             },
                             // Unpacking temporary file.
                             function (callback) {
                                 winston.info("Unpacking %s to %s", locals.archivePath, locals.extractPath);
 
-                                var extractStream = tar.Extract({path: locals.extractPath}).on('error', function (data, err) {
+                                var extractStream = tar.Extract({path: locals.extractPath}).on('error', function (err) {
                                         locals.pipeErr = true;
-                                        winston.error("Unknown error unpacking archive.");
+                                        winston.error("Error unpacking archive: %s", err.toString());
                                     })
                                     .on('end', function () {
                                         if (locals.pipeErr) {

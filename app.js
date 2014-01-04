@@ -95,7 +95,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             async.each(replaceCommands, 
                                 function(command, callback) {
                                     winston.info("Replacing commands in file.");
-                                    var shellStr = util.format("(cat %s | sed -e 's/\\(\\\\%s\\){\\([^}]*\\)}/\\\\begin{\\1}\\2\\\\end{\\1}/g') > %s", filePath, command, filePath);
+                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\){\\([^}]*\\)}/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
                                     winston.info(shellStr);
                                     exec(shellStr, callback);
                                 },
@@ -104,9 +104,12 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         },
                         // Pandoc compilation.
                         function (callback) {
+                            // TODO: Run pandoc from working directory of tex file, so that inputs are read appropriately?
+                            // (cd blah; pandoc blah) - spawns subshell
                             var filterPath = process.env.XIMERA_FILTER_PATH;
                             winston.info("Executing pandoc.");
-                            var shellStr = util.format('pandoc --standalone --metadata=repoId:%s --parse-raw -f latex -t html --filter=%s --output=%s %s', repo._id, filterPath, htmlPath, filePath);
+                            var baseDir = path.dirname(filePath);
+                            var shellStr = util.format('(cd %s; pandoc --metadata=repoId:%s --parse-raw -f latex -t html --filter=%s --output=%s %s)', baseDir, repo._id, filterPath, htmlPath, filePath);
                             winston.info(shellStr);
                             exec(shellStr, function (err, stdout, stderr) {
                                 winston.info ("Stdout: %s", stdout);
@@ -116,8 +119,9 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         },
                         // Hash file.
                         function (callback) {
+                            // Note that we hash the original file, since the Pandoc filter is non-deterministic and will include unique IDs.
                             winston.info("Hashing file.");
-                            var readStream = fs.createReadStream(htmlPath);
+                            var readStream = fs.createReadStream(filePath);
                             var hasher = crypto.createHash('sha1');
                             hasher.setEncoding('hex');                          
                             readStream.on('end', function() {
@@ -130,7 +134,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         // Find activity entry if it exists.
                         function (callback) {
                             winston.info("Finding activity entry.");
-                            mdb.Activity.findOne({hash: locals.hash}, function (err, activity) {
+                            mdb.Activity.findOne({baseFileHash: locals.hash}, function (err, activity) {
                                 if (err)  { callback(err); }
                                 else {
                                     locals.activity = activity;
@@ -154,7 +158,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                         winston.info("Saving activity.");
                                         var activity = new mdb.Activity({
                                             htmlFileId: fileObjectId,
-                                            fileHash: locals.hash,
+                                            baseFileHash: locals.hash,
                                             repoId: repo._id
                                         });
                                         activity.save(function (err) {
