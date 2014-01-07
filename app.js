@@ -12,7 +12,7 @@ var async = require('async')
   , _ = require('underscore');
 
 // Following commands will be replaced by environments so that Pandoc will receive raw blocks for them.
-var replaceCommands = ["headline", "activitytitle"];
+var replaceCommands = ["headline", "activitytitle", "answer"];
 
 // For now, just run through main loop once.
 
@@ -53,7 +53,7 @@ function getUnhiddenTexFileList(dirPath, callback) {
             // Don't do anything with hidden files.
             return;
         }
-        else if (fileName.substring(fileName.length - 4, fileName.length) === ".tex") {        
+        else if (fileName.substring(fileName.length - 4, fileName.length) === ".tex") {
             filePaths.push(filePath);
         }
     });
@@ -89,7 +89,23 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                     var fileName = path.basename(filePath).toString();
                     var htmlFileName = fileName.substring(0, fileName.length - 4) + ".html";
                     var htmlPath = path.join(path.dirname(filePath), htmlFileName);
+                    var locals2 = {skipped: false}; // Set to true if this document's compilation was skipped; won't propagate error.
+
+
                     async.series([
+                        // Check if file contains \documentclass; if not, don't compile it.
+                        function (callback) {
+                            var shellStr = util.format("grep '\\\\documentclass' %s", filePath);
+                            exec(shellStr, function (err, stdout) {
+                                if (stdout.length == 0) {
+                                    locals2.skipped = true;                                    
+                                    callback("Skipping file: \\documentclass not found.");
+                                }
+                                else {
+                                    callback();
+                                }
+                            });
+                        },
                         // Replace known commands with environments so that filter will see them.
                         function (callback) {
                             async.each(replaceCommands, 
@@ -176,14 +192,28 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 });                                                                 
                             }                           
                         }
-                    ], callback);
+                    ], function (err) {
+                        if (locals2.skipped) {
+                            winston.info(err);
+                            callback();
+                        }
+                        else if (err) {
+                            callback(err);
+                        }
+                        else {
+                            callback();
+                        }
+                    });
                 },
                 callback
             );
         }],
         function (err) {
-            if (err) callback(err);
+            if (err) {
+                callback(err);
+            }
             else {
+                winston.info("Saving activities");
                 // Update GitRepo's list of activities to only reflect those we just loaded. (Deleted activities will disappear.)
                 repo.currentActivityIds = locals.newActivityIds;
                 repo.save(callback);                
