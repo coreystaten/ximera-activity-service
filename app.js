@@ -12,12 +12,12 @@ var async = require('async')
   , _ = require('underscore');
 
 // Following commands will be replaced by environments so that Pandoc will receive raw blocks for them.
-var replaceCommands = ["headline", "activitytitle", "answer"];
+var replaceCommands = ['headline', 'activitytitle', 'answer', 'choice'];
 
 // For now, just run through main loop once.
 
 function main () {
-    winston.info("Starting main loop.");
+    winston.info('Starting main loop.');
 	async.series([
 		// Update all Git Repos.
 		function (callback) {
@@ -58,7 +58,7 @@ function getUnhiddenTexFileList(dirPath, callback) {
         }
     });
 
-    finder.on("error", callback);
+    finder.on('error', callback);
 
     finder.on('end', function () {
         callback(null, filePaths);
@@ -67,7 +67,7 @@ function getUnhiddenTexFileList(dirPath, callback) {
 
 // TODO: LaTeX is not trustable; this needs to be sandboxed using a Linux container or other mechanism before accepting user-generated content.
 function compileAndStoreTexFiles(repo, gitDirPath, callback) {
-    winston.info("Compiling Git Repo.");
+    winston.info('Compiling Git Repo.');
     var locals = {newActivityIds: []};
 
     async.series([
@@ -87,7 +87,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                 locals.filePaths,
                 function (filePath, callback) {
                     var fileName = path.basename(filePath).toString();
-                    var htmlFileName = fileName.substring(0, fileName.length - 4) + ".html";
+                    var htmlFileName = fileName.substring(0, fileName.length - 4) + '.html';
                     var htmlPath = path.join(path.dirname(filePath), htmlFileName);
                     var locals2 = {skipped: false}; // Set to true if this document's compilation was skipped; won't propagate error.
 
@@ -99,7 +99,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             exec(shellStr, function (err, stdout) {
                                 if (stdout.length == 0) {
                                     locals2.skipped = true;                                    
-                                    callback("Skipping file: \\documentclass not found.");
+                                    callback('Skipping file: \\documentclass not found.');
                                 }
                                 else {
                                     callback();
@@ -108,10 +108,10 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         },
                         // Replace known commands with environments so that filter will see them.
                         function (callback) {
-                            async.each(replaceCommands, 
+                            async.eachSeries(replaceCommands, 
                                 function(command, callback) {
                                     winston.info("Replacing commands in file.");
-                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\){\\([^}]*\\)}/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
+                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\)\\(\\({[^}]*}\\)*\\)/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
                                     winston.info(shellStr);
                                     exec(shellStr, callback);
                                 },
