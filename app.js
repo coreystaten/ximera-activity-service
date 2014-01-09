@@ -12,12 +12,12 @@ var async = require('async')
   , _ = require('underscore');
 
 // Following commands will be replaced by environments so that Pandoc will receive raw blocks for them.
-var replaceCommands = ["headline", "activitytitle", "youtube", "answer"];
+var replaceCommands = ['headline', 'activitytitle', 'youtube', 'answer', 'choice'];
 
 // For now, just run through main loop once.
 
 function main () {
-    winston.info("Starting main loop.");
+    winston.info('Starting main loop.');
 	async.series([
 		// Update all Git Repos.
 		function (callback) {
@@ -58,7 +58,7 @@ function getUnhiddenTexFileList(dirPath, callback) {
         }
     });
 
-    finder.on("error", callback);
+    finder.on('error', callback);
 
     finder.on('end', function () {
         callback(null, filePaths);
@@ -67,7 +67,7 @@ function getUnhiddenTexFileList(dirPath, callback) {
 
 // TODO: LaTeX is not trustable; this needs to be sandboxed using a Linux container or other mechanism before accepting user-generated content.
 function compileAndStoreTexFiles(repo, gitDirPath, callback) {
-    winston.info("Compiling Git Repo.");
+    winston.info('Compiling Git Repo.');
     var locals = {newActivityIds: []};
 
     async.series([
@@ -87,7 +87,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                 locals.filePaths,
                 function (filePath, callback) {
                     var fileName = path.basename(filePath).toString();
-                    var htmlFileName = fileName.substring(0, fileName.length - 4) + ".html";
+                    var htmlFileName = fileName.substring(0, fileName.length - 4) + '.html';
                     var htmlPath = path.join(path.dirname(filePath), htmlFileName);
                     var locals2 = {skipped: false}; // Set to true if this document's compilation was skipped; won't propagate error.
 
@@ -99,7 +99,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             exec(shellStr, function (err, stdout) {
                                 if (stdout.length == 0) {
                                     locals2.skipped = true;                                    
-                                    callback("Skipping file: \\documentclass not found.");
+                                    callback('Skipping file: \\documentclass not found.');
                                 }
                                 else {
                                     callback();
@@ -108,30 +108,15 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         },
                         // Replace known commands with environments so that filter will see them.
                         function (callback) {
-                            async.each(replaceCommands, 
+                            async.eachSeries(replaceCommands, 
                                 function(command, callback) {
                                     winston.info("Replacing commands in file.");
-                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\){\\([^}]*\\)}/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
+                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\)\\(\\(\\[[^\\]]*\\]\\)*\\({[^}]*}\\)*\\)/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
                                     winston.info(shellStr);
                                     exec(shellStr, callback);
                                 },
                                 callback
                             );
-                        },
-                        // Pandoc compilation.
-                        function (callback) {
-                            // TODO: Run pandoc from working directory of tex file, so that inputs are read appropriately?
-                            // (cd blah; pandoc blah) - spawns subshell
-                            var filterPath = process.env.XIMERA_FILTER_PATH;
-                            winston.info("Executing pandoc.");
-                            var baseDir = path.dirname(filePath);
-                            var shellStr = util.format('(cd %s; pandoc --metadata=repoId:%s --parse-raw -f latex -t html --filter=%s --output=%s %s)', baseDir, repo._id, filterPath, htmlPath, filePath);
-                            winston.info(shellStr);
-                            exec(shellStr, function (err, stdout, stderr) {
-                                winston.info ("Stdout: %s", stdout);
-                                winston.info("Stderr: %s", stderr);
-                                callback(err);
-                            });
                         },
                         // Hash file.
                         function (callback) {
@@ -146,6 +131,21 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 callback();
                             });
                             readStream.pipe(hasher);
+                        },                        
+                        // Pandoc compilation.
+                        function (callback) {
+                            // TODO: Run pandoc from working directory of tex file, so that inputs are read appropriately?
+                            // (cd blah; pandoc blah) - spawns subshell
+                            var filterPath = process.env.XIMERA_FILTER_PATH;
+                            winston.info("Executing pandoc.");
+                            var baseDir = path.dirname(filePath);
+                            var shellStr = util.format('(cd %s; pandoc --metadata=repoId:%s,hash:%s --parse-raw -f latex -t html --filter=%s --output=%s %s)', baseDir, repo._id, locals.hash, filterPath, htmlPath, filePath);
+                            winston.info(shellStr);
+                            exec(shellStr, function (err, stdout, stderr) {
+                                winston.info ("Stdout: %s", stdout);
+                                winston.info("Stderr: %s", stderr);
+                                callback(err);
+                            });
                         },
                         // Find activity entry if it exists.
                         function (callback) {
@@ -158,9 +158,9 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 }
                             });
                         },
-                        // If activity doesn't exist, save file and create one.  Add activity id to new activity list.
+                        // If activity doesn't exist, or has no associated file, save file and create one.  Add activity id to new activity list.
                         function (callback) {
-                            if (locals.activity) {
+                            if (locals.activity && locals.activity.htmlFileId) {
                                 // No need to load activity.
                                 winston.info ("Adding activity to list.")
                                 locals.newActivityIds.push(locals.activity._id);
@@ -172,12 +172,14 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                     if (err) callback (err);
                                     else {
                                         winston.info("Saving activity.");
-                                        var activity = new mdb.Activity({
-                                            htmlFileId: fileObjectId,
-                                            baseFileHash: locals.hash,
-                                            repoId: repo._id
-                                        });
-                                        activity.save(function (err) {
+                                        if (!locals.activity) {
+                                            locals.activity = new mdb.Activity({
+                                                htmlFileId: fileObjectId,
+                                                baseFileHash: locals.hash,
+                                                repoId: repo._id
+                                            });                                            
+                                        }
+                                        locals.activity.save(function (err) {
                                             if (err) {
                                                 winston.info("Error saving.")
                                                 callback (err);
