@@ -186,7 +186,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                             }
                                             else {
                                                 winston.info("Activity saved, adding to list.");
-                                                locals.newActivityIds.push(activity._id);                                                
+                                                locals.newActivityIds.push(locals.activity._id);                                                
                                                 callback();
                                             }
                                         });
