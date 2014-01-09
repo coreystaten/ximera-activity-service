@@ -12,7 +12,7 @@ var async = require('async')
   , _ = require('underscore');
 
 // Following commands will be replaced by environments so that Pandoc will receive raw blocks for them.
-var replaceCommands = ["headline", "activitytitle", "answer"];
+var replaceCommands = ["headline", "activitytitle", "youtube", "answer"];
 
 // For now, just run through main loop once.
 
