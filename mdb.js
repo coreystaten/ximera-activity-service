@@ -7,6 +7,7 @@ var winston = require("winston");
 exports = module.exports;
 
 var ObjectId = mongoose.Schema.ObjectId;
+var Mixed = mongoose.Schema.Types.Mixed;
 
 mongoose.connect('mongodb://' + process.env.XIMERA_MONGO_URL + "/" +
                  process.env.XIMERA_MONGO_DATABASE);
@@ -20,7 +21,8 @@ exports.gfs = gfs;
 exports.initialize = function initialize() {
     winston.info("Initializing Mongo");
     exports.GitRepo = mongoose.model("GitRepo",
-                                     { url: String, fileId: ObjectId,
+                                     { gitIdent: String,
+                                       fileId: ObjectId,
                                        currentActivityIds: [ObjectId] });
     exports.Activity = mongoose.model("Activity",
                                       { htmlFileId: ObjectId,
@@ -31,9 +33,14 @@ exports.initialize = function initialize() {
                                         description: String,
                                         title: String });
 
+    exports.Course = mongoose.model('Course',
+                                    { fullIdent: String,
+                                      name: String,
+                                      activityTree: Mixed });
+
 
     /*var testRepo = new exports.GitRepo({
-        url: "https://github.com/coreystaten/git-pull-test.git",
+        gitIdent: "coreystaten/git-pull-test",
         fileId: mongoose.Types.ObjectId()
     });
     testRepo.save(function () {});*/

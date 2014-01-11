@@ -17,6 +17,7 @@
     "fstream": "*",
     "findit": "*",
     "sleep": "*",
-    "underscore": "*"
+    "underscore": "*",
+    "js-yaml": "*"
   }
 }

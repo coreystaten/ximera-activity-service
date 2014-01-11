@@ -5,43 +5,13 @@ var async = require('async')
   , exec = require('child_process').exec
   , util = require('util')
   , mdb = require('../mdb')
+  , misc = require('../misc')
   , crypto = require('crypto')
   , path = require('path')
   , _ = require('underscore');
 
 // Following commands will be replaced by environments so that Pandoc will receive raw blocks for them.
 var replaceCommands = ['youtube', 'answer', 'choice'];
-
-// Calls callback(err, filePathList) with a list of paths to unhidden tex files.
-function getUnhiddenTexFileList(dirPath, callback) {
-    var finder = findit(dirPath);
-    var filePaths = [];
-
-    finder.on('directory', function (dir, stat, stop) {
-        if (path.basename(dir)[0] === ".") {
-            // Don't navigate hidden folders.
-            stop();
-        }
-    });
-
-    finder.on('file', function(filePath, stat) {
-        var fileName = path.basename(filePath).toString();
-        if (fileName[0] === ".") {
-            // Don't do anything with hidden files.
-            return;
-        }
-        else if (fileName.substring(fileName.length - 4, fileName.length) === ".tex") {
-            filePaths.push(filePath);
-        }
-    });
-
-    finder.on('error', callback);
-
-    finder.on('end', function () {
-        callback(null, filePaths);
-    });
-}
-
 
 // TODO: LaTeX is not trustable; this needs to be sandboxed using a Linux container or other mechanism before accepting user-generated content.
 module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
@@ -51,7 +21,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
     async.series([
         // Get list of .tex files to process
         function (callback) {
-            getUnhiddenTexFileList(gitDirPath, function (err, filePaths) {
+            misc.getUnhiddenFileList(gitDirPath, '.tex', function (err, filePaths) {
                 if (err) {callback(err)}
                 else {
                     locals.filePaths = filePaths;
@@ -101,18 +71,18 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         function (callback) {
                             // Note that we hash the original file, since the Pandoc filter is non-deterministic and will include unique IDs.
                             winston.info("Hashing file.");
-                            var readStream = fs.createReadStream(filePath);
-                            var hasher = crypto.createHash('sha1');
-                            hasher.setEncoding('hex');
-                            locals.latexSource = "";
-                            readStream.on('data', function (data) {
-                                locals.latexSource += data;
-                                hasher.update(data);
-                            });
-                            readStream.on('end', function() {
-                                hasher.end();
-                                locals.hash = hasher.read();
-                                callback();
+                            fs.readFile(filePath, 'utf8', function (err, data) {
+                                if (err) callback(err)
+                                else {
+                                    locals.latexSource = data;
+
+                                    var hasher = crypto.createHash('sha1');
+                                    hasher.setEncoding('hex');
+                                    hasher.update(data);
+                                    hasher.end()
+                                    locals.hash = hasher.read();
+                                    callback();
+                                }
                             });
                         },
                         // Find activity entry if it exists, if not create it.

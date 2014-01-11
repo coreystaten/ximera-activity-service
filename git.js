@@ -28,8 +28,8 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
 
         async.map(repos, function (repo, callback) {
             var locals = {};
-
-            winston.info('Mapping to repo %s at %s', repo.fileId.toString(), repo.url);
+            var repoUrl = 'https://github.com/' + repo.gitIdent + '.git';
+            winston.info('Mapping to repo %s at %s', repo.fileId.toString(), repoUrl);
 
             async.series([
                 // Find out if archive file is in GFS.
@@ -108,7 +108,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                     else {
                         locals.gitDirPath = temp.path();                        
                         winston.info("Archive file %s not found; cloning from repository to %s.", repo.fileId.toString(), locals.gitDirPath);
-                        git.clone(repo.url, locals.gitDirPath, function (err) {
+                        git.clone(repoUrl, locals.gitDirPath, function (err) {
                             if (err) { callback(err); }
                             else {
                                 winston.info("Repository successfully cloned.");
