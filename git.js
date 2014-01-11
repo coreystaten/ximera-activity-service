@@ -51,7 +51,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                     }
 
                 },
-                
+
                 function (callback) {
                     // If archive file is in GFS, pull it out and unzip it.
                     if (locals.inGfs) {
@@ -82,7 +82,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                                         }
                                         else {
                                             winston.info("Unpacking complete.")
-                                            callback();                                            
+                                            callback();
                                         }
                                     });
 
@@ -106,7 +106,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                     }
                     // Otherwise, clone it and save it.
                     else {
-                        locals.gitDirPath = temp.path();                        
+                        locals.gitDirPath = temp.path();
                         winston.info("Archive file %s not found; cloning from repository to %s.", repo.fileId.toString(), locals.gitDirPath);
                         git.clone(repoUrl, locals.gitDirPath, function (err) {
                             if (err) { callback(err); }
@@ -116,7 +116,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                             }
                         });
                     }
-                },           
+                },
 
                 // Perform the action.
                 function (callback) {

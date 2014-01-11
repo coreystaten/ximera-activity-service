@@ -68,7 +68,7 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
 
 function parseXimDoc(data, gitIdent) {
     lines = data.split('\n')
-    var ximTree = {}
+    var ximTree = []
     var context = {subtree: ximTree, prev: null, indent: 0}
     var lastAct = null;
     var inMeta = false;
@@ -93,7 +93,9 @@ function parseXimDoc(data, gitIdent) {
         else {
             if (indent > context.indent) {
                 // Descend.
-                context = {subtree: context.subtree[lastAct], prev: context, indent: indent}
+                var subtree = [];
+                context.subtree.push(subtree);
+                context = {subtree: subtree, prev: context, indent: indent}
             }
             else if (indent < context.indent) {
                 // Ascend
@@ -106,7 +108,7 @@ function parseXimDoc(data, gitIdent) {
             if (lastAct.indexOf(':') == -1) {
                 lastAct = gitIdent + ':' + lastAct;
             }
-            context.subtree[lastAct] = {};
+            context.subtree.push(lastAct);
         }
     });
     var metadata = yaml.safeLoad(meta);
