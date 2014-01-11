@@ -108,7 +108,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         },
                         // Replace known commands with environments so that filter will see them.
                         function (callback) {
-                            async.eachSeries(replaceCommands, 
+                            async.eachSeries(replaceCommands,
                                 function(command, callback) {
                                     winston.info("Replacing commands in file.");
                                     var shellStr = util.format("sed -ie 's/\\\\\\(%s\\)\\(\\(\\[[^\\]]*\\]\\)*\\({[^}]*}\\)*\\)/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
@@ -124,46 +124,66 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             winston.info("Hashing file.");
                             var readStream = fs.createReadStream(filePath);
                             var hasher = crypto.createHash('sha1');
-                            hasher.setEncoding('hex');                          
+                            hasher.setEncoding('hex');
                             readStream.on('end', function() {
                                 hasher.end();
                                 locals.hash = hasher.read();
                                 callback();
                             });
                             readStream.pipe(hasher);
-                        },                        
-                        // Pandoc compilation.
-                        function (callback) {
-                            // TODO: Run pandoc from working directory of tex file, so that inputs are read appropriately?
-                            // (cd blah; pandoc blah) - spawns subshell
-                            var filterPath = process.env.XIMERA_FILTER_PATH;
-                            winston.info("Executing pandoc.");
-                            var baseDir = path.dirname(filePath);
-                            var shellStr = util.format('(cd %s; pandoc --metadata=repoId:%s,hash:%s --parse-raw -f latex -t html --filter=%s --output=%s %s)', baseDir, repo._id, locals.hash, filterPath, htmlPath, filePath);
-                            winston.info(shellStr);
-                            exec(shellStr, function (err, stdout, stderr) {
-                                winston.info ("Stdout: %s", stdout);
-                                winston.info("Stderr: %s", stderr);
-                                callback(err);
-                            });
                         },
-                        // Find activity entry if it exists.
+                        // Find activity entry if it exists, if not create it.
                         function (callback) {
                             winston.info("Finding activity entry.");
                             mdb.Activity.findOne({baseFileHash: locals.hash}, function (err, activity) {
                                 if (err)  { callback(err); }
                                 else {
-                                    locals.activity = activity;
-                                    callback();
+                                    if (activity) {
+                                        locals.activityExists = true;
+                                        locals.activity = activity;
+                                        callback();
+                                    }
+                                    else {
+                                        locals.activityExists = false;
+                                        locals.activity = new mdb.Activity({
+                                            baseFileHash: locals.hash,
+                                            repoId: repo._id
+                                        });
+                                        locals.activity.save(function (err) {
+                                            callback(err);
+                                        })
+                                    }
                                 }
                             });
                         },
-                        // If activity doesn't exist, or has no associated file, save file and create one.  Add activity id to new activity list.
+                        // Pandoc compilation if activity not already compiled.
                         function (callback) {
-                            if (locals.activity && locals.activity.htmlFileId) {
+                            if (!locals.activityExists) {
+                                var filterPath = process.env.XIMERA_FILTER_PATH;
+                                winston.info("Executing pandoc.");
+                                var baseDir = path.dirname(filePath);
+                                var shellStr = util.format('(cd %s; pandoc --metadata=repoId:%s --metadata=hash:%s --parse-raw -f latex -t html --filter=%s --output=%s %s)', baseDir, repo._id, locals.hash, filterPath, htmlPath, filePath);
+                                winston.info(shellStr);
+                                exec(shellStr, function (err, stdout, stderr) {
+                                    winston.info ("Stdout: %s", stdout);
+                                    winston.info("Stderr: %s", stderr);
+                                    callback(err);
+                                });
+                            }
+                            else {
+                                winston.info("Document exists, skipping compilation.");
+                                callback();
+                            }
+                        },
+                        // If activity doesn't exist, save compiled pandoc file
+                        // and create activity. Regardless, add activity id to
+                        // new activity list.
+                        function (callback) {
+                            if (locals.activityExists) {
                                 // No need to load activity.
                                 winston.info ("Adding activity to list.")
                                 locals.newActivityIds.push(locals.activity._id);
+                                callback();
                             }
                             else {
                                 winston.info("Copying activity file to GFS");
@@ -172,27 +192,27 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                     if (err) callback (err);
                                     else {
                                         winston.info("Saving activity.");
-                                        if (!locals.activity) {
-                                            locals.activity = new mdb.Activity({
-                                                htmlFileId: fileObjectId,
-                                                baseFileHash: locals.hash,
-                                                repoId: repo._id
-                                            });                                            
-                                        }
-                                        locals.activity.save(function (err) {
-                                            if (err) {
-                                                winston.info("Error saving.")
-                                                callback (err);
+                                        // Need to pull a fresh copy of activity, since filter will have updated it.
+                                        mdb.Activity.findOne({baseFileHash: locals.hash}, function (err, activity) {
+                                            if (err) callback(err);
+                                            else if (activity) {
+                                                activity.htmlFileId = fileObjectId;
+                                                activity.save(function (err) {
+                                                    if (err) callback(err);
+                                                    else {
+                                                        winston.info("Activity saved, adding to list.");
+                                                        locals.newActivityIds.push(activity._id);
+                                                        callback();
+                                                    }
+                                                })
                                             }
                                             else {
-                                                winston.info("Activity saved, adding to list.");
-                                                locals.newActivityIds.push(locals.activity._id);                                                
-                                                callback();
+                                                callback("Activity missing.");
                                             }
                                         });
                                     }
-                                });                                                                 
-                            }                           
+                                });
+                            }
                         }
                     ], function (err) {
                         if (locals2.skipped) {
