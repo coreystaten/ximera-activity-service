@@ -27,7 +27,9 @@ exports.initialize = function initialize() {
                                         baseFileHash: {type: String, index: true},
                                         repoId: ObjectId,
                                         gitRelativePath: String,
-                                        latexSource: String });
+                                        latexSource: String,
+                                        description: String,
+                                        title: String });
 
 
     /*var testRepo = new exports.GitRepo({
