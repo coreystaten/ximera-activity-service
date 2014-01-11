@@ -87,6 +87,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                 locals.filePaths,
                 function (filePath, callback) {
                     var fileName = path.basename(filePath).toString();
+                    var relativeFilePath = path.relative(gitDirPath, filePath);
                     var htmlFileName = fileName.substring(0, fileName.length - 4) + '.html';
                     var htmlPath = path.join(path.dirname(filePath), htmlFileName);
                     var locals2 = {skipped: false}; // Set to true if this document's compilation was skipped; won't propagate error.
@@ -98,7 +99,7 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             var shellStr = util.format("grep '\\\\documentclass' %s", filePath);
                             exec(shellStr, function (err, stdout) {
                                 if (stdout.length == 0) {
-                                    locals2.skipped = true;                                    
+                                    locals2.skipped = true;
                                     callback('Skipping file: \\documentclass not found.');
                                 }
                                 else {
@@ -118,24 +119,28 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 callback
                             );
                         },
-                        // Hash file.
+                        // Hash file and store contents in locals.latexSource.
                         function (callback) {
                             // Note that we hash the original file, since the Pandoc filter is non-deterministic and will include unique IDs.
                             winston.info("Hashing file.");
                             var readStream = fs.createReadStream(filePath);
                             var hasher = crypto.createHash('sha1');
                             hasher.setEncoding('hex');
+                            locals.latexSource = "";
+                            readStream.on('data', function (data) {
+                                locals.latexSource += data;
+                                hasher.update(data);
+                            });
                             readStream.on('end', function() {
                                 hasher.end();
                                 locals.hash = hasher.read();
                                 callback();
                             });
-                            readStream.pipe(hasher);
                         },
                         // Find activity entry if it exists, if not create it.
                         function (callback) {
                             winston.info("Finding activity entry.");
-                            mdb.Activity.findOne({baseFileHash: locals.hash}, function (err, activity) {
+                            mdb.Activity.findOne({baseFileHash: locals.hash, repoId: repo._id, gitRelativePath: relativeFilePath}, function (err, activity) {
                                 if (err)  { callback(err); }
                                 else {
                                     if (activity) {
@@ -147,7 +152,9 @@ function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                         locals.activityExists = false;
                                         locals.activity = new mdb.Activity({
                                             baseFileHash: locals.hash,
-                                            repoId: repo._id
+                                            repoId: repo._id,
+                                            gitRelativePath: relativeFilePath,
+                                            latexSource: locals.latexSource
                                         });
                                         locals.activity.save(function (err) {
                                             callback(err);

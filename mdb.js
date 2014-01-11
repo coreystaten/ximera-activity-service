@@ -25,7 +25,9 @@ exports.initialize = function initialize() {
     exports.Activity = mongoose.model("Activity",
                                       { htmlFileId: ObjectId,
                                         baseFileHash: {type: String, index: true},
-                                        repoId: ObjectId });
+                                        repoId: ObjectId,
+                                        gitRelativePath: String,
+                                        latexSource: String });
 
 
     /*var testRepo = new exports.GitRepo({
