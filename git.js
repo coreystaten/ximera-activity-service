@@ -42,7 +42,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                                 locals.inGfs = count > 0;
                                 callback();
                             }
-                        });                        
+                        });
                     }
                     else {
                         winston.info("Archive not yet cloned.");
@@ -72,22 +72,22 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                             function (callback) {
                                 winston.info("Unpacking %s to %s", locals.archivePath, locals.extractPath);
 
-                                var extractStream = tar.Extract({path: locals.extractPath}).on('error', function (err) {
-                                        locals.pipeErr = true;
-                                        winston.error("Error unpacking archive: %s", err.toString());
+                                var extractStream = tar.Extract({path: locals.extractPath});
+
+                                locals.pipeError = false;
+                                fs.createReadStream(locals.archivePath)
+                                    .pipe(extractStream)
+                                    .on('error', function (err) {
+                                        winston.info('Error unpacking archive.');
+                                        locals.pipeError = true;
+                                        callback(err);
                                     })
                                     .on('end', function () {
-                                        if (locals.pipeErr) {
-                                            callback("Unpacking error.");
-                                        }
-                                        else {
+                                        if (!locals.pipeError) {
                                             winston.info("Unpacking complete.")
                                             callback();
                                         }
                                     });
-
-                                fs.createReadStream(locals.archivePath)
-                                    .pipe(extractStream);
                             },
                             // Setting gitDirPath.
                             function (callback) {
@@ -153,10 +153,13 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                     //wrench.rmdirRecursive(deletePath, false, function (err) {if (err) {winston.error(err);}});
 
                     callback(err, {repo: repo, result: locals.result});
+                    winston.info("Cleanup done");
                 }
             );
         },
-        callback);
+        function (err) {
+            callback(err);
+        });
     });
 }
 
@@ -209,7 +212,7 @@ exports.storeAlteredRepo = function storeDirectory(repo, gitDirPath, callback) {
                     callback("Unknown error saving archive.");
                 }
                 else {
-                    callback();                    
+                    callback();
                 }
             });
             read.pipe(write);
@@ -227,7 +230,6 @@ exports.storeAlteredRepo = function storeDirectory(repo, gitDirPath, callback) {
 }
 
 exports.updateGitAction = function updateGitAction(repo, gitDirPath, callback) {
-    
     async.series([
         // Perform a pull on the git repository.
         function (callback) {

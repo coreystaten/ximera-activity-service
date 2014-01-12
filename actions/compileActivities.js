@@ -60,9 +60,18 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             async.eachSeries(replaceCommands,
                                 function(command, callback) {
                                     winston.info("Replacing commands in file.");
-                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\)\\(\\(\\[[^\\]]*\\]\\)*\\({[^}]*}\\)*\\)/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
-                                    winston.info(shellStr);
-                                    exec(shellStr, callback);
+                                    // We create Regex literals and call source on them since it saves having to escape \\.
+                                    var commandRegex = new RegExp('\\\\(' + command + ')' + (/((\[[^\]]*\])*({[^}]*})*)/).source, 'g');
+                                    winston.info("Regex source", commandRegex.source);
+                                    fs.readFile(filePath, 'utf8', function (err, data) {
+                                        data = data.replace(commandRegex, '\\begin{$1}$2\\end{$1}');
+                                        fs.writeFile(filePath, data, 'utf8', callback);
+                                    });
+
+
+//                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\)\\(\\(\\[[^\\]]*\\]\\)*\\({[^}]*}\\)*\\)/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
+  //                                  winston.info(shellStr);
+    //                                exec(shellStr, callback);
                                 },
                                 callback
                             );

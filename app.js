@@ -12,25 +12,26 @@ var async = require('async')
 
 function main () {
     winston.info('Starting main loop.');
-	async.series([
-	    // Update all Git Repos.
-	    function (callback) {
-		git.actOnGitFiles(git.updateGitAction, callback);
-	    },
+    async.series([
+	// Update all Git Repos.
+	function (callback) {
+	    git.actOnGitFiles(git.updateGitAction, callback);
+	},
 
-	    // Compile TeX files in all repos and save the results.
-	    function (callback) {
-		git.actOnGitFiles(compileActivities, callback)
-	    },
+	// Compile TeX files in all repos and save the results.
+	function (callback) {
+	    git.actOnGitFiles(compileActivities, callback)
+	},
 
-            // Compile Xim files in all repos and save the results.
-            function (callback) {
-                git.actOnGitFiles(compileCourses, callback);
-            }
-	], function (err) {
-        if (err) {
-            winston.error(err);
+        // Compile Xim files in all repos and save the results.
+        function (callback) {
+            git.actOnGitFiles(compileCourses, callback);
         }
+    ], function (err) {
+        if (err) {
+            winston.error(err.toString('utf-8'));
+        }
+        process.exit();
     });
 }
 
