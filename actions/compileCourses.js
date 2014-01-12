@@ -76,7 +76,7 @@ function parseXimDoc(data, gitIdent) {
 
     _.each(lines, function(line) {
         var indent = line.match(/^ */)[0].length;
-        var trimmedLine = line.trim()
+        var trimmedLine = line.trim();
 
         if (trimmedLine === "") {
             return;
@@ -95,10 +95,6 @@ function parseXimDoc(data, gitIdent) {
                 // Descend.
                 if (context.length > 0) {
                     context = {subtree: _.last(context.subtree).children, prev: context, indent: indent}
-                }
-                else {
-                    // Nothing to descend, just increase initial indent level.
-                    context.indent = indent;
                 }
             }
             else if (indent < context.indent) {
