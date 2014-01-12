@@ -52,12 +52,16 @@ exports.initialize = function initialize() {
                                         activityTree: Mixed
                                     });
 
-
-    /*var testRepo = new exports.GitRepo({
-        gitIdentifier: "coreystaten/git-pull-test",
-        file: mongoose.Types.ObjectId()
+    
+    exports.GitRepo.find({}, function (err, repos) {
+	if (repos.length == 0) {
+	    var testRepo = new exports.GitRepo({
+		gitIdentifier: "kisonecat/git-pull-test",
+		file: mongoose.Types.ObjectId()
+	    });
+	    testRepo.save(function () {});
+	}
     });
-    testRepo.save(function () {});*/
 }
 
 exports.copyLocalFileToGfs = function (path, fileId, callback) {
