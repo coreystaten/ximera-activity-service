@@ -93,9 +93,7 @@ function parseXimDoc(data, gitIdent) {
         else {
             if (indent > context.indent) {
                 // Descend.
-                var subtree = [];
-                context.subtree.push(subtree);
-                context = {subtree: subtree, prev: context, indent: indent}
+                context = {subtree: context[context.length - 1].children, prev: context, indent: indent}
             }
             else if (indent < context.indent) {
                 // Ascend
@@ -108,7 +106,7 @@ function parseXimDoc(data, gitIdent) {
             if (lastAct.indexOf(':') == -1) {
                 lastAct = gitIdent + ':' + lastAct;
             }
-            context.subtree.push(lastAct);
+            context.subtree.push({value: lastAct, children: []});
         }
     });
     var metadata = yaml.safeLoad(meta);

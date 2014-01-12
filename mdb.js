@@ -24,7 +24,7 @@ exports.initialize = function initialize() {
     exports.GitRepo = mongoose.model("GitRepo",
                                      {
                                          // Key
-                                         gitIdent: String,
+                                         gitIdentifier: String,
                                          // Other
                                          file: ObjectId,
                                          currentActivities: [ObjectId]
