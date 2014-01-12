@@ -169,7 +169,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                         mdb.Activity.findOne({baseFileHash: locals.hash}, function (err, activity) {
                                             if (err) callback(err);
                                             else if (activity) {
-                                                activity.htmlFileId = fileObjectId;
+                                                activity.htmlFile = fileObjectId;
                                                 activity.save(function (err) {
                                                     if (err) callback(err);
                                                     else {
