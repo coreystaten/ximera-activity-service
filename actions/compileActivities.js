@@ -55,6 +55,17 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 }
                             });
                         },
+                        // Store original contents in latexSource.
+                        function (callback) {
+                            winston.info('Reading original latex source.');
+                            fs.readFile(filePath, 'utf8', function (err, data) {
+                                if (err) callback(err)
+                                else {
+                                    locals.latexSource = data;
+                                    callback();
+                                }
+                            });
+                        },
                         // Replace known commands with environments so that filter will see them.
                         function (callback) {
                             async.eachSeries(replaceCommands,
@@ -76,15 +87,13 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 callback
                             );
                         },
-                        // Hash file and store contents in locals.latexSource.
+                        // Hash file.
                         function (callback) {
                             // Note that we hash the original file, since the Pandoc filter is non-deterministic and will include unique IDs.
                             winston.info("Hashing file.");
                             fs.readFile(filePath, 'utf8', function (err, data) {
                                 if (err) callback(err)
                                 else {
-                                    locals.latexSource = data;
-
                                     var hasher = crypto.createHash('sha1');
                                     hasher.setEncoding('hex');
                                     hasher.update(data);

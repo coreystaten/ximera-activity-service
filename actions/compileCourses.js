@@ -93,7 +93,13 @@ function parseXimDoc(data, gitIdent) {
         else {
             if (indent > context.indent) {
                 // Descend.
-                context = {subtree: context[context.length - 1].children, prev: context, indent: indent}
+                if (context.length > 0) {
+                    context = {subtree: _.last(context.subtree).children, prev: context, indent: indent}
+                }
+                else {
+                    // Nothing to descend, just increase initial indent level.
+                    context.indent = indent;
+                }
             }
             else if (indent < context.indent) {
                 // Ascend
