@@ -133,7 +133,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         function (callback) {
                             if (!locals.activityExists) {
                                 var filterPath = process.env.XIMERA_FILTER_PATH;
-                                winston.info("Executing pandoc.");
+                                winston.info("Executing pandoc");
                                 var baseDir = path.dirname(filePath);
                                 var shellStr = util.format('(cd %s; pandoc --metadata=repoId:%s --metadata=hash:%s --parse-raw -f latex -t html --filter=%s --output=%s %s)', baseDir, repo._id, locals.hash, filterPath, htmlPath, filePath);
                                 winston.info(shellStr);

@@ -49,6 +49,8 @@ exports.initialize = function initialize() {
                                         relativePath: String,
                                         // Other
                                         name: String,
+                                        description: String,
+					slug: {type: String, index: true},
                                         activityTree: Mixed
                                     });
 

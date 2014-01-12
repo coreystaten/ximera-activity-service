@@ -45,7 +45,7 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
                         if (err) callback (err)
                         else {
                             var ximDoc = parseXimDoc(data, repo.gitIdentifier);
-                            var courseKey = {relativePath: relativeFilePath, repoId: repo._id};
+                            var courseKey = {relativePath: relativeFilePath, repo: repo._id};
                             // Save course file.
                             mdb.Course.findOne(courseKey, function (err, course) {
                                 if (err) callback(err);
@@ -55,6 +55,8 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
                                     }
                                     course.activityTree = ximDoc.activityTree;
                                     course.name = ximDoc.metadata.name;
+                                    course.description = ximDoc.metadata.description;
+                                    course.slug = repo.gitIdentifier + '/' + relativeFilePath.replace(/.xim$/, '' );
                                     course.markModified('activityTree');
                                     course.save(callback);
                                 }
