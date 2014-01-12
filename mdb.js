@@ -54,8 +54,8 @@ exports.initialize = function initialize() {
 
 
     /*var testRepo = new exports.GitRepo({
-        gitIdent: "coreystaten/git-pull-test",
-        fileId: mongoose.Types.ObjectId()
+        gitIdentifier: "coreystaten/git-pull-test",
+        file: mongoose.Types.ObjectId()
     });
     testRepo.save(function () {});*/
 }
