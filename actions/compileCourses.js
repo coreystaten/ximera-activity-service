@@ -41,17 +41,17 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
                 function (filePath, callback) {
                     var fileName = path.basename(filePath).toString();
                     var relativeFilePath = path.relative(gitDirPath, filePath);
-                    var fullIdent = repo.gitIdent + ":" + relativeFilePath;
                     fs.readFile(filePath, 'utf8', function (err, data) {
                         if (err) callback (err)
                         else {
                             var ximDoc = parseXimDoc(data, repo.gitIdent);
+                            var courseKey = {relativePath: relativeFilePath, repoId: repo._id};
                             // Save course file.
-                            mdb.Course.findOne({fullIdent: fullIdent}, function (err, course) {
+                            mdb.Course.findOne(courseKey, function (err, course) {
                                 if (err) callback(err);
                                 else {
                                     if (!course) {
-                                        course = new mdb.Course({fullIdent: fullIdent});
+                                        course = new mdb.Course(courseKey);
                                     }
                                     course.activityTree = ximDoc.activityTree;
                                     course.name = ximDoc.metadata.name;

@@ -97,7 +97,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         // Find activity entry if it exists, if not create it.
                         function (callback) {
                             winston.info("Finding activity entry.");
-                            mdb.Activity.findOne({baseFileHash: locals.hash, repoId: repo._id, gitRelativePath: relativeFilePath}, function (err, activity) {
+                            mdb.Activity.findOne({baseFileHash: locals.hash, repoId: repo._id, relativePath: relativeFilePath}, function (err, activity) {
                                 if (err)  { callback(err); }
                                 else {
                                     if (activity) {
@@ -110,7 +110,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                         locals.activity = new mdb.Activity({
                                             baseFileHash: locals.hash,
                                             repoId: repo._id,
-                                            gitRelativePath: relativeFilePath,
+                                            relativePath: relativeFilePath,
                                             latexSource: locals.latexSource
                                         });
                                         locals.activity.save(function (err) {

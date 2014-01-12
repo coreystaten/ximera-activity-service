@@ -18,25 +18,39 @@ var gfs = Grid(mongoose.connection.db, mongoose.mongo);
 exports.ObjectId = mongoose.Types.ObjectId;
 exports.gfs = gfs;
 
+// TODO: Add appropriate indexes.
 exports.initialize = function initialize() {
     winston.info("Initializing Mongo");
     exports.GitRepo = mongoose.model("GitRepo",
-                                     { gitIdent: String,
-                                       fileId: ObjectId,
-                                       currentActivityIds: [ObjectId] });
+                                     {
+                                         // Key
+                                         gitIdent: String,
+                                         // Other
+                                         file: ObjectId,
+                                         currentActivities: [ObjectId]
+                                     });
     exports.Activity = mongoose.model("Activity",
-                                      { htmlFileId: ObjectId,
-                                        baseFileHash: {type: String, index: true},
-                                        repoId: ObjectId,
-                                        gitRelativePath: String,
-                                        latexSource: String,
-                                        description: String,
-                                        title: String });
+                                      {
+                                          // Key
+                                          repo: ObjectId,
+                                          relativePath: String,
+                                          baseFileHash: {type: String, index: true},
+                                          // Other
+                                          htmlFile: ObjectId,
+                                          latexSource: String,
+                                          description: String,
+                                          title: String
+                                      });
 
     exports.Course = mongoose.model('Course',
-                                    { fullIdent: String,
-                                      name: String,
-                                      activityTree: Mixed });
+                                    {
+                                        // Key
+                                        repo: ObjectId,
+                                        relativePath: String,
+                                        // Other
+                                        name: String,
+                                        activityTree: Mixed
+                                    });
 
 
     /*var testRepo = new exports.GitRepo({
@@ -62,9 +76,8 @@ exports.copyLocalFileToGfs = function (path, fileId, callback) {
         }
         else {
             winston.info("GFS file written.")
-            callback();                    
+            callback();
         }
     });
-    read.pipe(write);	
+    read.pipe(write);
 }
-            
