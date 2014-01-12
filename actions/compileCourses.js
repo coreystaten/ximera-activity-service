@@ -44,7 +44,7 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
                     fs.readFile(filePath, 'utf8', function (err, data) {
                         if (err) callback (err)
                         else {
-                            var ximDoc = parseXimDoc(data, repo.gitIdent);
+                            var ximDoc = parseXimDoc(data, repo.gitIdentifier);
                             var courseKey = {relativePath: relativeFilePath, repoId: repo._id};
                             // Save course file.
                             mdb.Course.findOne(courseKey, function (err, course) {
