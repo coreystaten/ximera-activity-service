@@ -7,7 +7,6 @@
   },
   "dependencies": {
     "async": "*",
-    "tar": "*",
     "gridfs-stream": "*",
     "mongoose": "*",
     "temp": "*",

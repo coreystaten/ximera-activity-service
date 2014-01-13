@@ -1,5 +1,4 @@
 var async = require('async');
-var tar = require('tar');
 var Grid = require('gridfs-stream');
 var mongoose = require('mongoose');
 var temp = require("temp");
