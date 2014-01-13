@@ -26,6 +26,7 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
     async.series([
         // Get list of .xim files to process
         function (callback) {
+            winston.info('Finding .xim files in repo.');
             misc.getUnhiddenFileList(gitDirPath, '.xim', function (err, filePaths) {
                 if (err) {callback(err)}
                 else {
@@ -36,37 +37,71 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
         },
         // Process each .xim file.
         function (callback) {
-            async.each(
-                locals.filePaths,
-                function (filePath, callback) {
-                    var fileName = path.basename(filePath).toString();
-                    var relativeFilePath = path.relative(gitDirPath, filePath);
-                    fs.readFile(filePath, 'utf8', function (err, data) {
-                        if (err) callback (err)
-                        else {
-                            var ximDoc = parseXimDoc(data, repo.gitIdentifier);
-                            var courseKey = {relativePath: relativeFilePath, repo: repo._id};
-                            // Save course file.
-                            mdb.Course.findOne(courseKey, function (err, course) {
-                                if (err) callback(err);
-                                else {
-                                    if (!course) {
-                                        course = new mdb.Course(courseKey);
-                                    }
-                                    course.activityTree = ximDoc.activityTree;
-                                    course.name = ximDoc.metadata.name;
-                                    course.description = ximDoc.metadata.description;
-                                    course.slug = repo.gitIdentifier + '/' + relativeFilePath.replace(/.xim$/, '' );
-                                    course.markModified('activityTree');
-                                    course.save(callback);
-                                }
-                            });
-                        }
-                    });
-                },
-                callback);
+            winston.info('Processing .xim files.');
+            async.each(locals.filePaths, _.partial(compileCourseFile, repo, gitDirPath), callback);
         }], callback);
 }
+
+function compileCourseFile(repo, gitDirPath, filePath, callback) {
+    var locals = {};
+    var fileName = path.basename(filePath).toString();
+    var relativePath = path.relative(gitDirPath, filePath);
+    async.series([
+        function (callback) {
+            winston.info('Reading .xim file.');
+            fs.readFile(filePath, 'utf8', function (err, data) {
+                if (err) callback (err)
+                else {
+                    locals.fileData = data;
+                    callback();
+                }
+            });
+        },
+        function (callback) {
+            winston.info('Parsing .xim file.');
+            locals.ximDoc = parseXimDoc(locals.fileData, repo.gitIdentifier);
+            fillOutXimDocTreeActivities(locals.ximDoc.activityTree, callback);
+        },
+        function (callback) {
+            // Save course file.
+            winston.info('Saving compiled course file.');
+            var courseKey = {relativePath: relativePath, repo: repo._id};
+            mdb.Course.findOne(courseKey, function (err, course) {
+                if (err) callback(err);
+                else {
+                    if (!course) {
+                        course = new mdb.Course(courseKey);
+                    }
+                    course.activityTree = locals.ximDoc.activityTree;
+                    course.name = locals.ximDoc.metadata.name;
+                    course.description = locals.ximDoc.metadata.description;
+                    course.slug = repo.gitIdentifier + '/' + relativePath.replace(/.xim$/, '' );
+                    course.markModified('activityTree');
+                    course.save(callback);
+                }
+            });
+        }], callback);
+}
+
+function fillOutXimDocTreeActivities(ximDocTree, callback) {
+    async.each(ximDocTree, function(activityEntry) {
+        winston.info('Filling out ximdoc');
+        mdb.Activity.findOne({slug: activityEntry.slug}, function (err, activity) {
+            if (err) callback(err);
+            else if (activity) {
+                winston.info("Filling out activity");
+                activityEntry.title = activity.title;
+                activityEntry.description = activity.description;
+                activityEntry.activity = activity._id;
+                fillOutXimDocTreeActivities(activityEntry.children, callback);
+            }
+            else {
+                callback('Activity not found: ' + activityEntry.slug);
+            }
+        });
+    }, callback);
+}
+
 
 function parseXimDoc(data, gitIdent) {
     lines = data.split('\n')
@@ -95,14 +130,20 @@ function parseXimDoc(data, gitIdent) {
         else {
             if (indent > context.indent) {
                 // Descend.
-                if (context.length > 0) {
+                if (context.subtree.length > 0) {
                     context = {subtree: _.last(context.subtree).children, prev: context, indent: indent}
                 }
+                else {
+                    throw 'Incorrect course file format: can not start indented.';
+                }
             }
-            else if (indent < context.indent) {
-                // Ascend
-                while (indent != context.indent) {
+            else {
+                // Ascend if necessary.
+                while (indent < context.indent) {
                     context = context.prev;
+                }
+                if (indent != context.indent) {
+                    throw "Incorrect indentation in course file. " + indent + " vs " + context.indent;
                 }
             }
             lastAct = trimmedLine;
@@ -110,7 +151,7 @@ function parseXimDoc(data, gitIdent) {
             if (lastAct.indexOf(':') == -1) {
                 lastAct = gitIdent + ':' + lastAct;
             }
-            context.subtree.push({value: lastAct, children: []});
+            context.subtree.push({slug: lastAct, children: []});
         }
     });
     var metadata = yaml.safeLoad(meta);

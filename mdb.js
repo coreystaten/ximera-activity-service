@@ -39,7 +39,9 @@ exports.initialize = function initialize() {
                                           htmlFile: ObjectId,
                                           latexSource: String,
                                           description: String,
-                                          title: String
+                                          title: String,
+                                          recent: Boolean,
+                                          slug: String
                                       });
 
     exports.Course = mongoose.model('Course',
@@ -54,7 +56,6 @@ exports.initialize = function initialize() {
                                         activityTree: Mixed
                                     });
 
-    
     exports.GitRepo.find({}, function (err, repos) {
 	if (repos.length == 0) {
 	    var testRepo = new exports.GitRepo({
