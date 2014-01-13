@@ -84,7 +84,7 @@ function compileCourseFile(repo, gitDirPath, filePath, callback) {
 }
 
 function fillOutXimDocTreeActivities(ximDocTree, callback) {
-    async.each(ximDocTree, function(activityEntry) {
+    async.each(ximDocTree, function(activityEntry, callback) {
         winston.info('Filling out ximdoc');
         mdb.Activity.findOne({slug: activityEntry.slug}, function (err, activity) {
             if (err) callback(err);
