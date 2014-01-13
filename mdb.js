@@ -60,7 +60,6 @@ exports.initialize = function initialize() {
 	if (repos.length == 0) {
 	    var testRepo = new exports.GitRepo({
 		gitIdentifier: "kisonecat/git-pull-test",
-		file: mongoose.Types.ObjectId()
 	    });
 	    testRepo.save(function () {});
 	}
