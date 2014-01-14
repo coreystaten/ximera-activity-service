@@ -37,5 +37,4 @@ function main () {
 
 
 
-mdb.initialize();
-main();
+mdb.initialize(main);

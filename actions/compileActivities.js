@@ -11,7 +11,7 @@ var async = require('async')
   , _ = require('underscore');
 
 // Following commands will be replaced by environments so that Pandoc will receive raw blocks for them.
-var replaceCommands = ['youtube', 'answer', 'choice', 'includegraphics'];
+var replaceCommands = ['youtube', 'answer', 'choice', 'includegraphics', 'activitytitle', 'shortdescription'];
 
 // TODO: LaTeX is not trustable; this needs to be sandboxed using a Linux container or other mechanism before accepting user-generated content.
 module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {

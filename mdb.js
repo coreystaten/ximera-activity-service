@@ -19,7 +19,7 @@ exports.ObjectId = mongoose.Types.ObjectId;
 exports.gfs = gfs;
 
 // TODO: Add appropriate indexes.
-exports.initialize = function initialize() {
+exports.initialize = function initialize(callback) {
     winston.info("Initializing Mongo");
     exports.GitRepo = mongoose.model("GitRepo",
                                      {
@@ -61,8 +61,11 @@ exports.initialize = function initialize() {
 	    var testRepo = new exports.GitRepo({
 		gitIdentifier: "kisonecat/git-pull-test",
 	    });
-	    testRepo.save(function () {});
+	    testRepo.save(callback);
 	}
+        else {
+            callback();
+        }
     });
 }
 

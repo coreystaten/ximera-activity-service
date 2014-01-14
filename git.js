@@ -51,7 +51,7 @@ var writeGridFile = function(id, data, callback) {
 exports.actOnGitFiles = function actOnGitFiles(action, callback) {
     var locals = {};
 
-    winston.info('Acting on git files.');
+    winston.info('Acting on git files with ', util.inspect(action));
 
     winston.info('Finding all GitRepos.');
     mdb.GitRepo.find(function (err, repos) {
