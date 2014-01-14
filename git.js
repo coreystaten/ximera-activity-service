@@ -32,7 +32,7 @@ var readGridFile = function(id, callback) {
 };
 
 var writeGridFile = function(id, data, callback) {
-    var writeStream = mdb.gfs.createWriteStream({_id: id});
+    var writeStream = mdb.gfs.createWriteStream({_id: id, mode: 'w'});
     var locals = {};
     writeStream.on('error', function (err) {
         locals.err = err;
