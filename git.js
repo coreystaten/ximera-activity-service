@@ -49,7 +49,6 @@ var writeGridFile = function(id, data, callback) {
 
 // TODO: Detect errors in repositories, and reclone if any.
 exports.actOnGitFiles = function actOnGitFiles(action, callback) {
-    winston.info('BBBBBBBBBBBBBBBB', util.inspect(action));
     var locals = {};
 
     winston.info('Acting on git files.');
@@ -94,7 +93,6 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                                 locals.archivePath = temp.path() + ".tar";
                                 winston.info("Loading file %s from GFS to %s", repo.file.toString(), locals.archivePath);
                                 readGridFile(repo.file, function (err, data) {
-                                    winston.info('CCCCCCCCCCCCCCC', data.length);
                                     if (err) callback(err);
                                     else {
                                         fs.writeFile(locals.archivePath, data, 'binary', callback);
@@ -130,7 +128,6 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                 // Perform the action.
                 function (callback) {
                     winston.info("Performing action on %s", repo.gitIdentifier.toString());
-                    winston.info('AAAAAAAAAAAA', util.inspect(action));
                     action(repo, locals.gitDirPath, function (err, result) {
                         if (err) { callback(err) }
                         else {
