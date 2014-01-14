@@ -17,22 +17,23 @@ temp.track();
 exports = module.exports;
 
 var readGridFile = function(id, callback) {
-    var locals = {data:""};
+    var locals = {data: new Buffer(0)};
     var readStream = mdb.gfs.createReadStream({_id: id});
     readStream.on('error', function (err) {
         locals.err = err;
     });
     readStream.on('data', function (data) {
-        locals.data += data;
+        locals.data = Buffer.concat([locals.data, new Buffer(data)]);
     });
     readStream.on('end', function () {
         if (locals.err) callback(err);
-        else callback(null, locals.data);
+        else callback(null, locals.data.toString('binary'));
     });
 };
 
 var writeGridFile = function(id, data, callback) {
     var writeStream = mdb.gfs.createWriteStream({_id: id});
+    var locals = {};
     writeStream.on('error', function (err) {
         locals.err = err;
     });
@@ -48,6 +49,7 @@ var writeGridFile = function(id, data, callback) {
 
 // TODO: Detect errors in repositories, and reclone if any.
 exports.actOnGitFiles = function actOnGitFiles(action, callback) {
+    winston.info('BBBBBBBBBBBBBBBB', util.inspect(action));
     var locals = {};
 
     winston.info('Acting on git files.');
@@ -89,12 +91,13 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                         async.series([
                             // Pulling the file out.
                             function (callback) {
-                                locals.archivePath = temp.path();
+                                locals.archivePath = temp.path() + ".tar";
                                 winston.info("Loading file %s from GFS to %s", repo.file.toString(), locals.archivePath);
                                 readGridFile(repo.file, function (err, data) {
+                                    winston.info('CCCCCCCCCCCCCCC', data.length);
                                     if (err) callback(err);
                                     else {
-                                        fs.writeFile(locals.archivePath, data, callback);
+                                        fs.writeFile(locals.archivePath, data, 'binary', callback);
                                     }
                                 });
                             },
@@ -127,6 +130,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                 // Perform the action.
                 function (callback) {
                     winston.info("Performing action on %s", repo.gitIdentifier.toString());
+                    winston.info('AAAAAAAAAAAA', util.inspect(action));
                     action(repo, locals.gitDirPath, function (err, result) {
                         if (err) { callback(err) }
                         else {
@@ -164,49 +168,42 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
 }
 
 exports.storeAlteredRepo = function storeDirectory(repo, gitDirPath, callback) {
-    var locals = { archivePath: temp.path() };
+    var locals = { archivePath: temp.path() + ".tar" };
 
     async.series([
         // Put files into archive.
         function (callback) {
             winston.info("Packing archive for %s to %s", repo.gitIdentifier.toString(), locals.archivePath);
-            exec(util.format('tar -cf %s %s/*', locals.archivePath, gitDirPath), callback);
+            var shellStr = util.format('(cd %s && tar -cf %s .)', gitDirPath, locals.archivePath)
+            winston.info(shellStr);
+            exec(shellStr, callback);
         },
 
         // Save archive to GFS
         function (callback) {
             winston.info("Saving archive from %s to GFS for repo %s", locals.archivePath, repo.gitIdentifier.toString());
-            read = fs.createReadStream(locals.archivePath);
             var fileId = repo.file ? repo.file : mdb.ObjectId();
-            write = mdb.gfs.createWriteStream({
-                _id: repo.file,
-                mode: 'w'
+            fs.readFile(locals.archivePath, 'binary', function (err, data) {
+                if (err) callback(err);
+                else {
+                    writeGridFile(fileId, data, function (err) {
+                        if (err) callback(err);
+                        repo.file = fileId;
+                        repo.save(callback);
+                    });
+                }
             });
-            write.on('error', function (err) {
-                locals.pipeErr = true;
-            });
-            write.on('close', function (file) {
-                repo.file = file._id;
-                repo.save(function () {
-                winston.info("GFS file written.")
-                    if (locals.pipeErr) {
-                        callback("Unknown error saving archive.");
-                    }
-                    else {
-                        callback();
-                    }
-                });
-            });
-            read.pipe(write);
         }],
         // Final callback, attempt to perform cleanup.
         function (err) {
+            winston.info("Archive saved.");
             if (err) {
                 winston.error(err);
             }
 
             winston.info("Attempting cleanup of %s", locals.archivePath);
-            fs.unlink(locals.archivePath, callback);
+//            fs.unlink(locals.archivePath, callback);
+            callback();
         }
     );
 }
