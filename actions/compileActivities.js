@@ -10,9 +10,6 @@ var async = require('async')
   , path = require('path')
   , _ = require('underscore');
 
-// Following commands will be replaced by environments so that Pandoc will receive raw blocks for them.
-var replaceCommands = ['youtube', 'answer', 'choice', 'includegraphics', 'activitytitle', 'shortdescription'];
-
 // TODO: LaTeX is not trustable; this needs to be sandboxed using a Linux container or other mechanism before accepting user-generated content.
 module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
     winston.info('Compiling Git Repo.');
@@ -65,27 +62,6 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                     callback();
                                 }
                             });
-                        },
-                        // Replace known commands with environments so that filter will see them.
-                        function (callback) {
-                            async.eachSeries(replaceCommands,
-                                function(command, callback) {
-                                    winston.info("Replacing commands in file.");
-                                    // We create Regex literals and call source on them since it saves having to escape \\.
-                                    var commandRegex = new RegExp('\\\\(' + command + ')' + (/((\[[^\]]*\])*({[^}]*})*)/).source, 'g');
-                                    winston.info("Regex source", commandRegex.source);
-                                    fs.readFile(filePath, 'utf8', function (err, data) {
-                                        data = data.replace(commandRegex, '\\begin{$1}$2\\end{$1}');
-                                        fs.writeFile(filePath, data, 'utf8', callback);
-                                    });
-
-
-//                                    var shellStr = util.format("sed -ie 's/\\\\\\(%s\\)\\(\\(\\[[^\\]]*\\]\\)*\\({[^}]*}\\)*\\)/\\\\begin{\\1}\\2\\\\end{\\1}/g'", command, filePath);
-  //                                  winston.info(shellStr);
-    //                                exec(shellStr, callback);
-                                },
-                                callback
-                            );
                         },
                         // Hash file.
                         function (callback) {
@@ -175,7 +151,20 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             callback();
                         }
                         else if (err) {
-                            callback(err);
+                            // If activity didn't exist, we saved a cached version with no data; delete this.
+                            if (!locals2.activityExists) {
+                                try {
+                                    locals2.activity.remove(function () {
+                                        callback(err);
+                                    });
+                                }
+                                catch (exc) {
+                                    callback(err);
+                                }
+                            }
+                            else {
+                                callback(err);
+                            }
                         }
                         else {
                             callback();
