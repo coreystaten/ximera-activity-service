@@ -96,7 +96,8 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                             baseFileHash: locals2.hash,
                                             repo: repo._id,
                                             relativePath: relativeFilePath,
-                                            latexSource: locals2.latexSource
+                                            latexSource: locals2.latexSource,
+                                            timeCreated: Date.now()
                                         });
                                         locals2.activity.save(function (err) {
                                             callback(err);

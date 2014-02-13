@@ -41,7 +41,8 @@ exports.initialize = function initialize(callback) {
                                           description: String,
                                           title: String,
                                           recent: Boolean,
-                                          slug: String
+                                          slug: String,
+                                          timeCreated: {type: Date, index: true}
                                       });
 
     exports.Course = mongoose.model('Course',
