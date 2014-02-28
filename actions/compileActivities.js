@@ -97,7 +97,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                             repo: repo._id,
                                             relativePath: relativeFilePath,
                                             latexSource: locals2.latexSource,
-                                            timeCreated: Date.now()
+                                            timeLastUsed: Date.now()
                                         });
                                         locals2.activity.save(function (err) {
                                             callback(err);
@@ -132,8 +132,10 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                             if (locals2.activityExists) {
                                 // No need to load activity.
                                 winston.info ("Adding activity to list.")
-                                locals.newActivityIds.push(locals2.activity._id);
-                                callback();
+                                setActivityAsRecent(repo, relativeFilePath, locals2.activity, function () {
+                                    locals.newActivityIds.push(locals2.activity._id);
+                                    callback();
+                                });
                             }
                             else {
                                 saveNewActivityVersion(repo, relativeFilePath, locals2.hash, htmlPath, function (err, activityId) {
@@ -190,6 +192,24 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
 }
 
 
+function setActivityAsRecent(repo, relativePath, activity, callback) {
+    winston.info("Marking old versions of activity as non-recent.");
+    mdb.Activity.find({repo: repo._id, relativePath: relativePath}, function (err, activities) {
+        async.each(activities, function (otherActivity, callback) {
+            if (!otherActivity._id.equals(activity._id)) {
+                otherActivity.recent = false;
+                otherActivity.save(callback);
+            }
+            else {
+                // Save from fresh version since activity object may be out of date.
+                otherActivity.recent = true;
+                otherActivity.timeLastUsed = Date.now();
+                otherActivity.save(callback);
+            }
+        }, callback);
+    });
+}
+
 // Expects compiled html file at htmlPath.
 // callback(err, activity._id)
 function saveNewActivityVersion (repo, relativePath, baseFileHash, htmlPath, callback) {
@@ -203,15 +223,6 @@ function saveNewActivityVersion (repo, relativePath, baseFileHash, htmlPath, cal
             mdb.copyLocalFileToGfs(htmlPath, locals.fileObjectId, callback);
         },
         function (callback) {
-            winston.info("Marking old versions of activity as non-recent.");
-            mdb.Activity.find({repo: repo._id, relativePath: relativePath}, function (err, activities) {
-                async.each(activities, function (activity, callback) {
-                    activity.recent = false;
-                    activity.save(callback);
-                }, callback);
-            });
-        },
-        function (callback) {
             winston.info("Saving activity.");
             // Need to pull a fresh copy of activity, since filter will have updated it.
             mdb.Activity.findOne({baseFileHash: baseFileHash}, function (err, activity) {
@@ -223,7 +234,7 @@ function saveNewActivityVersion (repo, relativePath, baseFileHash, htmlPath, cal
                     activity.save(function (err) {
                         if (err) callback(err);
                         else {
-                            locals.activityId = activity._id;
+                            locals.activity = activity;
                             callback();
                         }
                     })
@@ -232,10 +243,14 @@ function saveNewActivityVersion (repo, relativePath, baseFileHash, htmlPath, cal
                     callback("Activity missing.");
                 }
             });
-        }], function (err) {
+        },
+        function (callback) {
+            setActivityAsRecent(repo, relativePath, locals.activity, callback);
+        }
+    ], function (err) {
             if (err) callback(err);
             else {
-                callback(null, locals.activityId);
+                callback(null, locals.activity._id);
             }
         });
 }
