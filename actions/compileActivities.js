@@ -41,11 +41,11 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                     async.series([
                         // Check if file contains \documentclass; if not, don't compile it.
                         function (callback) {
-                            var shellStr = util.format("grep '\\\\documentclass' %s", filePath);
+                            var shellStr = util.format("grep '\\\\documentclass.*ximera' %s", filePath);
                             exec(shellStr, function (err, stdout) {
                                 if (stdout.length == 0) {
                                     locals2.skipped = true;
-                                    callback('Skipping file: \\documentclass not found.');
+                                    callback('Skipping file: \\documentclass{ximera} not found.');
                                 }
                                 else {
                                     callback();
