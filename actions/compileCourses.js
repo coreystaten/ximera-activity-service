@@ -86,10 +86,10 @@ function compileCourseFile(repo, gitDirPath, filePath, callback) {
 function fillOutXimDocTreeActivities(ximDocTree, callback) {
     async.eachSeries(ximDocTree, function(activityEntry, callback) {
         winston.info('Filling out ximdoc');
-        mdb.Activity.findOne({slug: activityEntry.slug}, function (err, activity) {
+        mdb.Activity.findOne({slug: activityEntry.slug, recent: true}, function (err, activity) {
             if (err) callback(err);
             else if (activity) {
-                winston.info("Filling out activity");
+                winston.info("Filling out activity %s", activityEntry.slug);
                 activityEntry.title = activity.title;
                 activityEntry.description = activity.description;
                 activityEntry.activity = activity._id;
