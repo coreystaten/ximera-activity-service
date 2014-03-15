@@ -159,6 +159,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
             );
         },
         function (err) {
+            winston.info("Mapping action complete.");
             callback(err);
         });
     });
