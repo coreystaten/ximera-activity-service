@@ -38,7 +38,7 @@ module.exports = function compileCourses(repo, gitDirPath, callback) {
         // Process each .xim file.
         function (callback) {
             winston.info('Processing .xim files.');
-            async.each(locals.filePaths, _.partial(compileCourseFile, repo, gitDirPath), callback);
+            async.eachSeries(locals.filePaths, _.partial(compileCourseFile, repo, gitDirPath), callback);
         }], callback);
 }
 
@@ -84,7 +84,7 @@ function compileCourseFile(repo, gitDirPath, filePath, callback) {
 }
 
 function fillOutXimDocTreeActivities(ximDocTree, callback) {
-    async.each(ximDocTree, function(activityEntry, callback) {
+    async.eachSeries(ximDocTree, function(activityEntry, callback) {
         winston.info('Filling out ximdoc');
         mdb.Activity.findOne({slug: activityEntry.slug}, function (err, activity) {
             if (err) callback(err);

@@ -28,7 +28,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
         },
         // Process each .tex file.
         function (callback) {
-            async.each(
+            async.eachSeries(
                 locals.filePaths,
                 function (filePath, callback) {
                     var fileName = path.basename(filePath).toString();
@@ -195,7 +195,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
 function setActivityAsRecent(repo, relativePath, activity, callback) {
     winston.info("Marking old versions of activity as non-recent.");
     mdb.Activity.find({repo: repo._id, relativePath: relativePath}, function (err, activities) {
-        async.each(activities, function (otherActivity, callback) {
+        async.eachSeries(activities, function (otherActivity, callback) {
             if (!otherActivity._id.equals(activity._id)) {
                 otherActivity.recent = false;
                 otherActivity.save(callback);

@@ -57,7 +57,7 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
     mdb.GitRepo.find(function (err, repos) {
         winston.info('Found %d repos; mapping action.', repos.length);
 
-        async.map(repos, function (repo, callback) {
+        async.mapSeries(repos, function (repo, callback) {
             var locals = {};
             var repoUrl = 'https://github.com/' + repo.gitIdentifier + '.git';
             winston.info('Mapping to repo %s at %s', repo.gitIdentifier.toString(), repoUrl);
@@ -92,12 +92,23 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                             function (callback) {
                                 locals.archivePath = temp.path() + ".tar";
                                 winston.info("Loading file %s from GFS to %s", repo.file.toString(), locals.archivePath);
+                                try {
                                 readGridFile(repo.file, function (err, data) {
+                                    try {
                                     if (err) callback(err);
                                     else {
+                                        winston.info("Writing grid file locally to %s", locals.archivePath);
                                         fs.writeFile(locals.archivePath, data, 'binary', callback);
                                     }
+                                    }
+                                    catch (e) {
+                                        winston.info("Error in readGridFile callback: %s", e);
+                                    }
                                 });
+                                }
+                                catch (e) {
+                                    winston.info("Error reading grid file: %s", e);
+                                }
                             },
                             // Unpacking temporary file.
                             function (callback) {
