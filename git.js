@@ -83,22 +83,28 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
             async.series([
                 // Find out if archive file is in GFS.
                 function (callback) {
-                    if (repo.file) {
-                        winston.info("Searching for archive file %s in GFS.", repo.gitIdentifier.toString());
-                        mdb.gfs.files.find({ _id: repo.file }).count(function (err, count) {
-                            if (err) { callback(err); }
-                            else {
-                                locals.inGfs = count > 0;
-                                callback();
-                            }
-                        });
-                    }
-                    else {
-                        winston.info("Archive not yet cloned.");
+                    //TODO: Temporary hack: always clone on the pull action, since corruption is sometimes happening?
+                    if (util.inspect(action) === '[Function: updateGitAction]') {
                         locals.inGfs = false;
                         callback();
                     }
-
+                    else {
+                        if (repo.file) {
+                            winston.info("Searching for archive file %s in GFS.", repo.gitIdentifier.toString());
+                            mdb.gfs.files.find({ _id: repo.file }).count(function (err, count) {
+                                if (err) { callback(err); }
+                                else {
+                                    locals.inGfs = count > 0;
+                                    callback();
+                                }
+                            });
+                        }
+                        else {
+                            winston.info("Archive not yet cloned.");
+                            locals.inGfs = false;
+                            callback();
+                        }
+                    }
                 },
 
                 function (callback) {
