@@ -20,14 +20,32 @@ var readGridFile = function(id, callback) {
     var locals = {data: new Buffer(0)};
     var readStream = mdb.gfs.createReadStream({_id: id});
     readStream.on('error', function (err) {
-        locals.err = err;
+        winston.info("error in readGridFile");
+        try {
+            locals.err = err;
+        }
+        catch (e) {
+            winston.info("ERROR in error: %s", e);
+        }
     });
     readStream.on('data', function (data) {
-        locals.data = Buffer.concat([locals.data, new Buffer(data)]);
+        winston.info("data in readGridFile");
+        try {
+            locals.data = Buffer.concat([locals.data, new Buffer(data)]);
+        }
+        catch (e) {
+            winston.info("ERROR in data: %s", e);
+        }
     });
     readStream.on('end', function () {
-        if (locals.err) callback(err);
-        else callback(null, locals.data.toString('binary'));
+        winston.info("end in readGridFile");
+        try {
+            if (locals.err) callback(err);
+            else callback(null, locals.data.toString('binary'));
+        }
+        catch (e) {
+            winston.info("ERROR in end: %s", e);
+        }
     });
 };
 
