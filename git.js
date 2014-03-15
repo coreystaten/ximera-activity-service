@@ -28,15 +28,6 @@ var readGridFile = function(id, callback) {
             winston.info("ERROR in error: %s", e);
         }
     });
-    readStream.on('data', function (data) {
-        winston.info("data in readGridFile");
-        try {
-            locals.data = Buffer.concat([locals.data, new Buffer(data)]);
-        }
-        catch (e) {
-            winston.info("ERROR in data: %s", e);
-        }
-    });
     readStream.on('end', function () {
         winston.info("end in readGridFile");
         try {
@@ -45,6 +36,15 @@ var readGridFile = function(id, callback) {
         }
         catch (e) {
             winston.info("ERROR in end: %s", e);
+        }
+    });
+    readStream.on('data', function (data) {
+        winston.info("data in readGridFile");
+        try {
+            locals.data = Buffer.concat([locals.data, new Buffer(data)]);
+        }
+        catch (e) {
+            winston.info("ERROR in data: %s", e);
         }
     });
 };
@@ -182,8 +182,8 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
                     winston.info("Attempting cleanup of temporary directory %s", deletePath);
                     //wrench.rmdirRecursive(deletePath, false, function (err) {if (err) {winston.error(err);}});
 
-                    callback(err, {repo: repo, result: locals.result});
                     winston.info("Cleanup done");
+                    callback(err, {repo: repo, result: locals.result});
                 }
             );
         },
