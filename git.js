@@ -11,6 +11,7 @@ var fstream = require('fstream');
 var exec = require('child_process').exec;
 var mdb = require('./mdb');
 var util = require('util');
+var _ = require('underscore');
 
 temp.track();
 
@@ -74,6 +75,9 @@ exports.actOnGitFiles = function actOnGitFiles(action, callback) {
     winston.info('Finding all GitRepos.');
     mdb.GitRepo.find(function (err, repos) {
         winston.info('Found %d repos; mapping action.', repos.length);
+
+	// BADBAD: ignore some broken repos
+	repos = _.filter( repos, function(repo) { return !repo.gitIdentifier.match( 'serge' ) } );
 
         async.mapSeries(repos, function (repo, callback) {
             var locals = {};
