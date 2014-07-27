@@ -60,7 +60,7 @@ exports.initialize = function initialize(callback) {
     exports.GitRepo.find({}, function (err, repos) {
 	if (repos.length == 0) {
 	    var testRepo = new exports.GitRepo({
-		gitIdentifier: "kisonecat/git-pull-test",
+		gitIdentifier: "romath/Prob4530",
 	    });
 	    testRepo.save(callback);
 	}

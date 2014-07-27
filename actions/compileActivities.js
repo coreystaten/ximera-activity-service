@@ -22,7 +22,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                 if (err) {callback(err)}
                 else {
                     locals.filePaths = filePaths;
-                    callback();
+		    callback();
                 }
             })
         },
@@ -36,7 +36,6 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                     var htmlFileName = fileName.substring(0, fileName.length - 4) + '.html';
                     var htmlPath = path.join(path.dirname(filePath), htmlFileName);
                     var locals2 = {skipped: false}; // Set to true if this document's compilation was skipped; won't propagate error.
-
 
                     async.series([
                         // Check if file contains \documentclass; if not, don't compile it.
