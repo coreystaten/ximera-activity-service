@@ -1,3 +1,4 @@
+
 var async = require('async')
   , git = require('./git')
   , sleep = require('sleep')
@@ -8,8 +9,7 @@ var async = require('async')
   , compileCourses = require('./actions/compileCourses');
 
 
-if (!process.env.XIMERA_COOKIE_SECRET ||
-    !process.env.XIMERA_MONGO_DATABASE ||
+if (!process.env.XIMERA_MONGO_DATABASE ||
     !process.env.XIMERA_MONGO_URL) {
     throw "Appropriate environment variables not set.";
 }
