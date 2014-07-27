@@ -1,5 +1,5 @@
 {
-  "name": "application-name",
+  "name": "ximera-service",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -17,6 +17,7 @@
     "findit": "*",
     "sleep": "*",
     "underscore": "*",
-    "js-yaml": "*"
+    "js-yaml": "*",
+    "mubsub": "*"
   }
 }

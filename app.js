@@ -8,33 +8,59 @@ var async = require('async')
   , compileCourses = require('./actions/compileCourses');
 
 
-// For now, just run through main loop once.
+if (!process.env.XIMERA_COOKIE_SECRET ||
+    !process.env.XIMERA_MONGO_DATABASE ||
+    !process.env.XIMERA_MONGO_URL) {
+    throw "Appropriate environment variables not set.";
+}
 
-function main () {
-    winston.info('Starting main loop.');
-    async.series([
-	// Update all Git Repos.
-	function (callback) {
-	    git.actOnGitFiles(git.updateGitAction, callback);
-	},
+function updateRepo(gitIdentifier) {
+    mdb.GitRepo.findOne({gitIdentifier: gitIdentifier}).exec( function (err, repo) {
 
-	// Compile TeX files in all repos and save the results.
-	function (callback) {
-	    git.actOnGitFiles(compileActivities, callback)
-	},
+	async.series([
+	    // Update all Git Repos.
+	    function (callback) {
+		git.actOnGitFiles([repo], git.updateGitAction, callback);
+	    },
+	    
+	    // Compile TeX files in all repos and save the results.
+	    function (callback) {
+		git.actOnGitFiles([repo], compileActivities, callback)
+	    },
+	    
+            // Compile Xim files in all repos and save the results.
+            function (callback) {
+		git.actOnGitFiles([repo], compileCourses, callback);
+            },
 
-        // Compile Xim files in all repos and save the results.
-        function (callback) {
-            git.actOnGitFiles(compileCourses, callback);
-        }
-    ], function (err) {
-        if (err) {
-            winston.error(err.toString('utf-8'));
-        }
-        process.exit();
+	    // Record that this has been successful
+	    function (callback) {
+		mdb.GitRepo.update( repo, {$set: { needsUpdate : false }}, {}, function( err, document ) {} );
+		mdb.GitRepo.update( repo, {$set: { feedback : '' }}, {}, function( err, document ) {} );
+	    }
+
+	], function (err) {
+            if (err) {
+		mdb.GitRepo.update( repo, {$set: { feedback : err.toString('utf-8') }}, {}, function( err, document ) {} );
+		winston.error(err.toString('utf-8'));
+            }
+            //process.exit();
+	});
+
     });
 }
 
+mdb.initialize(function(error) {
+    winston.info( "I am listening for work." );
 
+    mdb.channel.on( 'update', function(message) {
+	winston.info( "Updating " + message );
+	updateRepo( message );
+    });
 
-mdb.initialize(main);
+    mdb.channel.on( 'create', function(message) {
+	winston.info( "Creating " + message );
+	// Creating is not different from updating
+	updateRepo( message );
+    });
+});
