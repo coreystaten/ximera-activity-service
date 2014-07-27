@@ -35,8 +35,7 @@ function updateRepo(gitIdentifier) {
 
 	    // Record that this has been successful
 	    function (callback) {
-		mdb.GitRepo.update( repo, {$set: { needsUpdate : false }}, {}, function( err, document ) {} );
-		mdb.GitRepo.update( repo, {$set: { feedback : '' }}, {}, function( err, document ) {} );
+		mdb.GitRepo.update( repo, {$set: { needsUpdate : false }, $unset: { feedback : '' }}, {}, function( err, document ) {} );
 	    }
 
 	], function (err) {
