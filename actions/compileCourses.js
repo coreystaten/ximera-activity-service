@@ -96,6 +96,7 @@ function fillOutXimDocTreeActivities(ximDocTree, callback) {
                 fillOutXimDocTreeActivities(activityEntry.children, callback);
             }
             else {
+		callback();
                 //callback('Activity not found: ' + activityEntry.slug);
             }
         });
