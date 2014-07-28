@@ -106,7 +106,7 @@ exports.actOnGitFiles = function actOnGitFiles(repos, action, callback) {
 	    
             function (callback) {
                 // If archive file is in GFS, pull it out and unzip it.
-                if (locals.inGfs) {
+                if (false && locals.inGfs) {
                     winston.info("Archive file for %s found in GFS.", repo.gitIdentifier.toString());
                     async.series([
                         // Pulling the file out.
