@@ -60,7 +60,20 @@ function compileCourseFile(repo, gitDirPath, filePath, callback) {
         function (callback) {
             winston.info('Parsing .xim file.');
             locals.ximDoc = parseXimDoc(locals.fileData, repo.gitIdentifier);
-            fillOutXimDocTreeActivities(locals.ximDoc.activityTree, callback);
+
+	    if (!(locals.ximDoc.metadata)) {
+		callback('Could not parse metadata in ' + fileName );
+	    } else {
+		if (!(locals.ximDoc.metadata.name)) {
+		    locals.ximDoc.metadata.name = repo.gitIdentifier.replace( '/', '-' );
+		}
+
+		if (!(locals.ximDoc.metadata.description)) {
+		    locals.ximDoc.metadata.description = 'No description';
+		}
+
+		fillOutXimDocTreeActivities(locals.ximDoc.activityTree, callback);
+	    }
         },
         function (callback) {
             // Save course file.
@@ -155,6 +168,11 @@ function parseXimDoc(data, gitIdent) {
             context.subtree.push({slug: lastAct, children: []});
         }
     });
-    var metadata = yaml.safeLoad(meta);
-    return {activityTree: ximTree, metadata: metadata};
+
+    try {
+	var metadata = yaml.safeLoad(meta);
+	return {activityTree: ximTree, metadata: metadata};
+    } catch (err) {
+	return {activityTree: ximTree};
+    }
 }

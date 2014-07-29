@@ -78,83 +78,17 @@ exports.actOnGitFiles = function actOnGitFiles(repos, action, callback) {
         winston.info('Mapping to repo %s at %s', repo.gitIdentifier.toString(), repoUrl);
 	
         async.series([
-            // Find out if archive file is in GFS.
+            // Pulling the file out.
             function (callback) {
-                //TODO: Temporary hack: always clone on the pull action, since corruption is sometimes happening?
-                if (util.inspect(action) === '[Function: updateGitAction]') {
-                    locals.inGfs = false;
-                    callback();
-                }
-                else {
-                    if (repo.file) {
-                        winston.info("Searching for archive file %s in GFS.", repo.gitIdentifier.toString());
-                        mdb.gfs.files.find({ _id: repo.file }).count(function (err, count) {
-                            if (err) { callback(err); }
-                            else {
-                                locals.inGfs = count > 0;
-                                callback();
-                            }
-                        });
-                    }
+                locals.gitDirPath = temp.path();
+                winston.info("Archive file for %s not found; cloning from repository to %s.", repo.gitIdentifier.toString(), locals.gitDirPath);
+                git.clone(repoUrl, locals.gitDirPath, function (err) {
+                    if (err) { callback(err); }
                     else {
-                        winston.info("Archive not yet cloned.");
-                        locals.inGfs = false;
-                        callback();
+                        winston.info("Repository successfully cloned.");
+                        exports.updateGitAction(repo, locals.gitDirPath, callback);
                     }
-                }
-            },
-	    
-            function (callback) {
-                // If archive file is in GFS, pull it out and unzip it.
-                if (false && locals.inGfs) {
-                    winston.info("Archive file for %s found in GFS.", repo.gitIdentifier.toString());
-                    async.series([
-                        // Pulling the file out.
-                        function (callback) {
-                            locals.archivePath = temp.path() + ".tar";
-                            winston.info("Loading file %s from GFS to %s", repo.file.toString(), locals.archivePath);
-                            try {
-                                readGridFile(repo.file, function (err, data) {
-                                    try {
-					if (err) callback(err);
-					else {
-                                            winston.info("Writing grid file locally to %s", locals.archivePath);
-                                            fs.writeFile(locals.archivePath, data, 'binary', callback);
-					}
-                                    }
-                                    catch (e) {
-                                        winston.info("Error in readGridFile callback: %s", e);
-                                    }
-                                });
-                            }
-                            catch (e) {
-                                winston.info("Error reading grid file: %s", e);
-                            }
-                        },
-                        // Unpacking temporary file.
-                        function (callback) {
-                            winston.info('Unpacking');
-                            locals.gitDirPath = temp.path();
-                            exec(util.format('(mkdir %s && tar -C %s -xvf %s)', locals.gitDirPath, locals.gitDirPath, locals.archivePath), callback);
-                        },
-                    ],
-				 function (err) {
-                                     if (err) {callback(err)}
-                                     else {callback();}
-				 });
-                }
-                // Otherwise, clone it and save it.
-                else {
-                    locals.gitDirPath = temp.path();
-                    winston.info("Archive file for %s not found; cloning from repository to %s.", repo.gitIdentifier.toString(), locals.gitDirPath);
-                    git.clone(repoUrl, locals.gitDirPath, function (err) {
-                        if (err) { callback(err); }
-                        else {
-                            winston.info("Repository successfully cloned.");
-                            exports.updateGitAction(repo, locals.gitDirPath, callback);
-                        }
-                    });
-                }
+                });
             },
 	    
             // Perform the action.
@@ -240,6 +174,7 @@ exports.storeAlteredRepo = function storeDirectory(repo, gitDirPath, callback) {
 
 exports.updateGitAction = function updateGitAction(repo, gitDirPath, callback) {
     async.series([
+
         // Perform a pull on the git repository.
         function (callback) {
             winston.info("Pulling git repository for %s at ", repo.gitIdentifier.toString(), gitDirPath);
@@ -249,10 +184,12 @@ exports.updateGitAction = function updateGitAction(repo, gitDirPath, callback) {
                 callback();
             });
         },
+
         // Store
         function (callback) {
             exports.storeAlteredRepo(repo, gitDirPath, callback);
         }],
+
         callback
     );
 }

@@ -65,7 +65,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                         // Hash file.
                         function (callback) {
                             // Note that we hash the original file, since the Pandoc filter is non-deterministic and will include unique IDs.
-                            winston.info("Hashing file.");
+                            winston.info("Hashing original latex source.");
                             fs.readFile(filePath, 'utf8', function (err, data) {
                                 if (err) callback(err)
                                 else {
@@ -116,7 +116,7 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 exec(shellStr, function (err, stdout, stderr) {
                                     winston.info ("Stdout: %s", stdout);
                                     winston.info("Stderr: %s", stderr);
-                                    callback(err);
+				    callback('Error compiling file ' + relativeFilePath + "\n" + err);
                                 });
                             }
                             else {
