@@ -116,7 +116,10 @@ module.exports = function compileAndStoreTexFiles(repo, gitDirPath, callback) {
                                 exec(shellStr, function (err, stdout, stderr) {
                                     winston.info ("Stdout: %s", stdout);
                                     winston.info("Stderr: %s", stderr);
-				    callback('Error compiling file ' + relativeFilePath + "\n" + err);
+				    if (err)
+					callback('Error compiling file ' + relativeFilePath + "\n" + err);
+				    else
+					callback();
                                 });
                             }
                             else {
