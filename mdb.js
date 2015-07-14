@@ -4,7 +4,6 @@ var fstream = require('fstream');
 var fs = require("fs");
 var winston = require("winston");
 var _ = require("underscore");
-var mubsub = require('mubsub');
 
 exports = module.exports;
 
@@ -23,6 +22,21 @@ exports.ObjectId = mongoose.Types.ObjectId;
 exports.initialize = function initialize(callback) {
     winston.info("Initializing Mongo");
 
+    var GitPushesSchema = new mongoose.Schema(
+	{
+	    gitIdentifier: String,
+	    senderAccessToken: {type: String},
+	    sender: Mixed,
+	    repository: Mixed,
+	    ref: String,
+	    headCommit: Mixed,
+	    finishedProcessing: Boolean
+	},
+	{
+	    capped: 1024*1024,
+	});
+    exports.GitPushes = mongoose.model("GitPushes", GitPushesSchema);
+    
     exports.GitRepo = mongoose.model("GitRepo",
                                      {
                                          // Key
@@ -34,27 +48,72 @@ exports.initialize = function initialize(callback) {
                                          currentActivities: [ObjectId]
                                      });
 
+    exports.Branch = mongoose.model("Branch",
+                                     {
+                                         owner: {type: String, index: true},
+					 repository: {type: String, index: true},
+					 name: {type: String, index: true},
+					 commit: String,
+                                         lastUpdate: {type: Date, index: true},
+                                     });
+
+    // 128 megabytes of compile logs
+    var CompileLogSchema = new mongoose.Schema(
+	{
+	    hash: {type: String, index: true},
+	    commit: {type: String, index: true},
+	    errorList: Mixed,
+	    log: String
+	},
+	{
+	    capped: 1024*1024*128,
+	});
+    
+    exports.CompileLog = mongoose.model("CompileLog", CompileLogSchema);    
+
+    exports.GitFile = mongoose.model("GitFile",
+                                      {
+					  hash: {type: String, index: true},
+					  commit: {type: String, index: true},
+                                          path: {type: String, index: true},
+                                      });
+
+    exports.Blob = mongoose.model("Blob",
+                                  {
+				      hash: {type: String, index: true, unique: true, sparse: true},
+				      data: Buffer
+				  });
+
     exports.Activity = mongoose.model("Activity",
                                       {
-                                          // Key
-                                          repo: {type: ObjectId, ref:"GitRepo"},
-                                          relativePath: String,
-                                          baseFileHash: {type: String, index: true},
-                                          // Other
-                                          htmlFile: ObjectId,
+					  // deprecated
                                           latexSource: String,
+                                          htmlFile: ObjectId,
+                                          baseFileHash: {type: String, index: true},
+					  relativePath: String,
+                                          repo: {type: ObjectId, ref:"GitRepo"},
+
+                                          // Unknown status
                                           description: String,
-                                          title: String,
                                           recent: Boolean,
                                           slug: String,
-                                          timeLastUsed: {type: Date, index: true}
+
+					  // Currently used
+                                          timeLastUsed: {type: Date, index: true},
+					  commit: {type: String, index: true},
+					  path: String,
+					  hash: {type: String, index: true},
+                                          title: String,
                                       });
 
     exports.User = mongoose.model("User",
                                   {
                                       googleOpenId: {type: String, index: true, unique: true, sparse: true},
                                       courseraOAuthId: {type: String, index: true, unique: true, sparse: true},
+                                      twitterOAuthId: {type: String, index: true, unique: true, sparse: true},				      
                                       ltiId: {type: String, index: true, unique: true, sparse: true},
+                                      githubId: {type: String, index: true, unique: true, sparse: true},
+                                      githubAccessToken: {type: String},
 				      course: String,
 				      superuser: Boolean,
                                       name: String,
@@ -234,33 +293,7 @@ exports.initialize = function initialize(callback) {
 
     exports.Course = mongoose.model('Course', CourseSchema );
 
-    mongoose.connect(url, function (error) {
-	var client = mubsub(mongoose.connection.db);
-	exports.channel = client.channel('github');
-	exports.gfs = Grid(mongoose.connection.db, mongoose.mongo);
-
-	callback(error);
+    mongoose.connect(url, {}, function (err) {
+	callback(err);
     });
-}
-
-exports.copyLocalFileToGfs = function (path, fileId, callback) {
-	var locals = {pipeErr: false};
-	read = fs.createReadStream(path);
-    write = exports.gfs.createWriteStream({
-        _id: fileId,
-        mode: 'w'
-    });
-    write.on('error', function (err) {
-        locals.pipeErr = true;
-    });
-    write.on('close', function (file) {
-        if (locals.pipeErr) {
-            callback("Unknown error saving archive.");
-        }
-        else {
-            winston.info("GFS file written.")
-            callback();
-        }
-    });
-    read.pipe(write);
 }

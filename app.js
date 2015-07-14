@@ -5,10 +5,11 @@ var async = require('async')
   , sleep = require('sleep')
   , winston = require('winston')
   , mdb = require('./mdb')
-// Actions
-  , compileActivities = require('./actions/compileActivities')
-  , compileCourses = require('./actions/compileCourses');
+  , crypto = require('crypto')
+  , githubApi = require('github')
+  ;
 
+var XIMERA_URL = "https://6b1fb2f6.ngrok.com/sha/";
 
 var tar = require("tar")
 , fstream = require("fstream")
@@ -19,6 +20,8 @@ var temp = require('temp');
 temp.track();
 
 var path = require('path');
+var extname = path.extname;
+var basename = path.basename;
 
 var exec = require('child_process').exec;
 var child_process = require('child_process');
@@ -26,6 +29,37 @@ var child_process = require('child_process');
 if (!process.env.XIMERA_MONGO_DATABASE ||
     !process.env.XIMERA_MONGO_URL) {
     throw "Appropriate environment variables not set.";
+}
+
+/** @function saveToContentAddressableFilesystem saves data to the CAFS and returns a hash via the callback */
+function saveToContentAddressableFilesystem( data, callback ) {
+    var hash = "";
+    
+    async.series(
+	[
+	    // Compute hash
+	    function(callback) {
+		var shasum = crypto.createHash('sha256');
+		shasum.update(data);
+		hash = shasum.digest('hex');
+		callback(null);
+	    },
+	    
+	    function(callback) {
+		var blob = new mdb.Blob({
+		    hash: hash,
+		    data: data
+		});
+		
+		blob.save(callback);
+	    }
+	],function(err, result) {
+	    callback( err, hash );
+	    return;
+	}
+    );
+
+    return;
 }
 
 /* This should be using git clone --mirror so that I can git clone without pulling everything from github every single time. */
@@ -41,8 +75,8 @@ if (!process.env.XIMERA_MONGO_DATABASE ||
    * convert the PDFs to SVGs
 */
 
-////////////////////////////////////////////////////////////////
-// createMirror asynchronously initializes a bare repoDirectory with the contents of the github repo at githubIdentifier
+/** @function createMirror asynchronously initializes a bare repoDirectory with the contents of the github repo at githubIdentifier
+*/
 function createMirror( githubIdentifier, repoDirectory, callback ) {
     
     async.waterfall([
@@ -74,10 +108,64 @@ function createMirror( githubIdentifier, repoDirectory, callback ) {
     });
 }
 
-////////////////////////////////////////////////////////////////
-// updateCachedMirror asynchronously creates (or refreshes) a bare repo containing a mirrored copy of the repo at githubIdentifier
-//
-// callback will be called with the repoDirectory, which is a base64 encoding of the github identifier in a .cache directory
+/** @function processMatchingFiles runs handler on each file matching extension stored in the tar file at outputTarPath
+    @param {string} outputTarPath path to the tar file to process
+    @param {string} extension
+    @param {string} handler
+*/
+function processMatchingFiles(outputTarPath, extension, handler, callback)
+{
+    winston.info( "Reading output tarfile for " + extension + " files..." );
+    
+    var finished = false;
+
+    // Queue for saving tex file content to the database
+    var q = async.queue(function (task, callback) {
+	handler( task.path, task.text, callback );
+    }, 2 );
+
+    q.drain = function() {
+	if (finished)
+	    callback(null);
+    };
+    
+    fs.createReadStream(outputTarPath)
+	.pipe(tar.Parse())
+	.on("end", function(e) {
+	    if (q.length() > 0)
+		finished = true;
+	    else
+		callback(null);
+	})
+	.on("entry", function (e) {
+	    var path = e.props.path.replace( /^.\//, "" );
+
+	    var regexp = extension;
+	    if (typeof extension  === 'string' || extension instanceof String)
+		var regexp = new RegExp("\\." + extension + "$","g");
+	    
+	    if (path.match( regexp )) {
+		// Grab text as it comes in through the stream
+		var text = new Buffer(0);
+		
+		e.on("data", function (c) {
+		    text = Buffer.concat([text,c]);
+		});
+		
+		// When the file is finished...
+		e.on("end", function () {
+		    q.push( { path: path, text: text }, function(err) {
+			winston.info( "Finished processing " + path );
+		    });
+		});
+	    }
+	});
+}
+
+/** @function updateCachedMirror asynchronously creates (or refreshes) a bare repo containing a mirrored copy of the repo at githubIdentifier
+    @param {string} githubIdentifier 
+    @param callback called with the repoDirectory, which is a base64 encoding of the github identifier in a .cache directory
+*/
 function updateCachedMirror( githubIdentifier, callback ) {
     var homeDirectory = process.env.HOME;
     var cacheDirectory = path.resolve( homeDirectory, '.cache', 'ximera' );
@@ -106,14 +194,15 @@ function updateCachedMirror( githubIdentifier, callback ) {
 
 	function (repo, callback) {
 	    winston.info( "Getting remote..." );
-	    git.Remote.load( repo, "origin" ).then( function(remote) {
+	    git.Remote.lookup( repo, "origin" ).then( function(remote) {
 		callback( null, repo, remote );
 	    }).catch( function(err) { callback(err); });
 	},
 
 	function (repo, origin, callback) {
 	    winston.info( "Fetching remote from http://github.com/" + githubIdentifier + "..." );
-	    origin.fetch(git.Signature.now( "Ximera", "ximera@math.osu.edu" ), "fetch").then( function() {
+	    var refspecs = "";
+	    origin.fetch(refspecs, git.Signature.now( "Ximera", "ximera@math.osu.edu" ), "fetch").then( function() {
 		callback( null, repoDirectory );
 	    });
 	},
@@ -122,12 +211,18 @@ function updateCachedMirror( githubIdentifier, callback ) {
     });
 }
 
-function updateRepo(githubIdentifier) {
+/** @function updateRepo
+    Grab a copy of the repo given by githubIdentifier, fetch the content associated to the given commitSha, and run LaTeX on it inside a sandbox, saving the results in the database
+    @param {string} githubIdentifier 
+*/
+function updateRepo(githubIdentifier, commitSha, callback) {
     var repositoryDirectory = "";
     var bareDirectory = "";
     var sandboxTarPath = "";
     var overlayPath = "";
     var outputTarPath = "";
+    var repository = null;
+    var headCommit = null;
     
     async.waterfall([
 	// Get the repository from the repo
@@ -140,6 +235,7 @@ function updateRepo(githubIdentifier) {
 	function (repoInformation, callback) {
 	    winston.info( "Creating or updating the mirror..." );
 	    updateCachedMirror( githubIdentifier, function(err, directory) {
+		console.log( "Created or updated!" );
 		bareDirectory = directory;
 		callback( null ); 
 	    });
@@ -170,6 +266,47 @@ function updateRepo(githubIdentifier) {
 	    }).catch( function(err) { callback(err); });
 	},
 
+	function (callback) {
+	    winston.info( "Opening repository..." );
+	    git.Repository.open(repositoryDirectory).then( function(repo) {
+		repository = repo;
+		callback( null );
+	    }).catch( function(err) { callback(err); });
+	},
+
+	/*
+	function (callback) {
+	    winston.info( "Finding HEAD reference in repository at " + repository.path() + "..." );
+	    repository.getReference("HEAD", function(err, ref) {
+		if (err) callback(err);
+
+		winston.info( "Finding HEAD commit in repository..." );
+		repository.getCommit(ref.target(), function (err, commit) {
+		    console.log( "commit = ", commit.sha() );
+		    headCommit = commit;
+		    callback(err);
+		});
+	    });
+	},
+	*/
+
+	function (callback) {
+	    winston.info( "Finding given commit in repository..." );
+	    repository.getCommit(commitSha, function (err, commit) {
+		console.log( "commit = ", commit.sha() );
+		headCommit = commit;
+		callback(err);
+	    });
+	},	
+
+	function (callback) {
+	    winston.info( "Resetting to the given commit..." );
+	    git.Reset.reset( repository, headCommit, git.Reset.TYPE.HARD, null, git.Signature.now( "Ximera", "ximera@math.osu.edu" ), "fetch").then(
+		function(result) {
+		    callback( null );
+		});
+	},	
+	
 	/*
 	function (callback) {
 	    winston.info( "Display README.md for fun" );
@@ -189,13 +326,20 @@ function updateRepo(githubIdentifier) {
 	    commands = commands + "cd ~/sandbox\n";
 	    // Set up some of the environment
 	    commands = commands + "export HOME=/root\n";
+	    // Make the line length a bit bigger on the latex log output
+	    commands = commands + "export max_print_line=2048\n";
 	    commands = commands + "export TEXMFHOME=/root/texmf\n";
 	    // Add the tikzexport class option to every tex file
 	    commands = commands + 'find . -iname \'*.tex\' -execdir sed -i \'1s/^/\\\\PassOptionsToClass{tikzexport}{ximera}\\\\nonstopmode/\' {} \\;\n';
-	    // Run pdflatex twice on all tex files
+	    // Run pdflatex just once on all tex files
 	    commands = commands + 'find . -iname \'*.tex\' -execdir pdflatex -shell-escape {} \\; > /dev/ttyS0\n';
-	    commands = commands + 'find . -iname \'*.tex\' -execdir pdflatex -shell-escape {} \\; > /dev/ttyS0\n';
-	    // Exit
+	    // Run tex4ht just once on all tex files
+	    commands = commands + 'find . -iname \'*.tex\' -execdir htlatex {} "ximera,charset=utf-8,-css" "" "" "--interaction=nonstopmode -shell-escape" \\; > /dev/ttyS0\n';
+	    // Convert the PDF files to SVG files -- no need to do this now because I do it from pdflatex
+	    // commands = commands + 'find . -iname \'*.pdf\' -execdir pdf2svg {} {}.svg \\; > /dev/ttyS0\n';
+	    // Tidy up the html files
+	    commands = commands + 'find . -iname \'*.html\' -execdir tidy -m -asxhtml -utf8 -q -i {} \\; > /dev/ttyS0\n';
+	    // Save everything to the block device
 	    commands = commands + "tar -cvf /dev/sdc .\n";
 	    // Exit
 	    commands = commands + "poweroff\n";
@@ -219,7 +363,7 @@ function updateRepo(githubIdentifier) {
 		callback(err);
 	    });
 	},
-			      
+	
 	function (callback) {
 	    winston.info( "Packing tarfile with repository contents..." );
 
@@ -346,7 +490,7 @@ function updateRepo(githubIdentifier) {
 
 		// If so, kill the sandbox.
 		if (secondsSinceLastOutput > 10) {
-		    qemuError = "Seconds passed without output.";
+		    qemuError = "Too many seconds passed without output.";
 		    qemu.kill();
 		}
 	    }, 1000 );
@@ -359,25 +503,108 @@ function updateRepo(githubIdentifier) {
 	},
 
 	function (callback) {
-	    winston.info( "Reading output tarfile..." );
-
-	    fs.createReadStream(outputTarPath)
-		.pipe(tar.Parse())
-		.on("entry", function (e) {
-		    console.error("entry", e.props);
-		    /*
-		    e.on("data", function (c) {
-			console.error(" >>>" + c.toString().replace(/\n/g, "\\n"))
-		    })
-		    e.on("end", function () {
-			console.error(" <<<EOF")
-		    })
-		    */
-		}).on("end", function (e) {
-		    callback( null );
-		});
+	    winston.info( "Saving git blobs and trees..." );
+	    
+	    processMatchingFiles(outputTarPath, new RegExp("\\.(tex|js|css)$", "g"),
+				 function( path, text, callback ) {
+				     winston.info( "Saving " + path + "..." );
+				     headCommit.getEntry(path).then(function(entry) {
+					 async.parallel(
+					     [
+						 function(callback) {
+						     var gitFile = new mdb.GitFile({
+							 hash: entry.sha(),
+							 commit: headCommit.sha(),
+							 path: path
+						     });
+						     
+						     gitFile.save(callback);
+						 },
+						 
+						 function(callback) {
+						     var blob = new mdb.Blob({
+							 hash: entry.sha(),
+							 data: text
+						     });
+						     
+						     blob.save(callback);
+						 },
+					     ], callback );
+				     });
+				 }, callback);
 	},
+
+	function (callback) {
+	    processMatchingFiles(outputTarPath, "log",
+				 function( path, text, callback ) {
+				     var texpath = path.replace( /.log$/, ".tex" );
+				     // Get the associated SHA's and...
+				     headCommit.getEntry(texpath).then(function(entry) {
+					 // Save the log to the database
+					 var compileLog = new mdb.CompileLog({
+					     hash: entry.sha(),
+					     commit: headCommit.sha(),
+					     log: text
+					 });
+					 
+					 var errorList = [];
+					 
+					 var errorRegexp = /^! (.*)\nl\.([0-9]+) /g;
+					 var match = errorRegexp.exec(text);
+					 while (match != null) {
+					     errorList.push( { error: match[1], line: match[2], file: texpath } );
+					     match = errorRegexp.exec(text);
+					 }
+					 
+					 compileLog.errorList = errorList;
+					 compileLog.save(callback);
+				     });
+				 }, callback);
+	},	
+
+	function (callback) {
+	    winston.info("Saving HTML files...");
+	    processMatchingFiles(outputTarPath, "html",
+				 function( path, text, callback ) {
+				     // Get the title from the filename, or the <title> tag if there is one
+				     var title = basename(path).replace(".html", "");
+				     var re = /(<\s*title[^>]*>(.+?)<\s*\/\s*title)>/gi;
+				     var match = re.exec(text);
+				     if (match && match[2]) {
+					 title = match[2];
+				     }
+
+				     // BADBAD: extract everything between body tags
+				     text = text.toString().replace(/[\s\S]*<body>/ig,'').replace(/<\/body>[\s\S]*/ig,'');
+				     
+				     saveToContentAddressableFilesystem( text, function(err, hash) {
+					 var activity = new mdb.Activity();
+					 
+					 // Save the HTML file to the database as an activity
+					 activity.commit = headCommit.sha();
+					 activity.hash = hash;
+					 activity.path = path.replace( /.html$/, "" );
+                                         activity.title = title;
+					 
+					 activity.save(callback);
+				     });
+				 }, callback);
+	},	
 	
+	function (callback) {
+	    winston.info("Saving images...");
+	    processMatchingFiles(outputTarPath, new RegExp("\\.(pdf|svg|jpg|png)$", "g"),
+				 function( path, text, callback ) {
+				     saveToContentAddressableFilesystem( text, function(err, hash) {
+					 var gitFile = new mdb.GitFile();
+					 gitFile.commit = headCommit.sha();
+					 gitFile.path = path;
+					 gitFile.hash = hash;
+					 gitFile.save(callback);
+				     });
+				 }, callback);
+	},
+
 	function (callback) {
 	    temp.cleanup(function(err, stats) {
 		winston.info("Cleaned up " + stats.files + " temp files");
@@ -389,8 +616,10 @@ function updateRepo(githubIdentifier) {
 	    console.log( "All done." );
 	    callback( null );
 	},
+	
     ], function (err, result) {
 	console.log( "Done." );
+	
 	// This needs to post an appropriate error as a GitHub status, with a link to a Ximera page which details all the errors
         if (err) {
 	    winston.error(JSON.stringify(err));
@@ -402,68 +631,127 @@ function updateRepo(githubIdentifier) {
         } else {
 	    winston.info("Success.");
 	}
-        //process.exit();
+	
+	callback( err, null );
     });
 }
 
+/** @function updateGithubStatus
+    Post a commit status associated with the push data from the webhook.
+    @param {object} push The data sent from the Ximera server through the Github webhook
+    @param {string} state Either "pending" or "success" or "failure" or "error"
+    @param {string} description Some text to associate with the commit status
+*/
+function updateGithubStatus( push, state, description, callback ) {
+    var senderAccessToken = push.senderAccessToken;    
+    var repository = push.repository;
+    var headCommit = push.headCommit;
+    if (headCommit == undefined)
+	return;
+    
+    var github = new githubApi({version: "3.0.0"});
 
-function updateRepoBad(gitIdentifier) {
-    mdb.GitRepo.findOne({gitIdentifier: gitIdentifier}).exec( function (err, repo) {
-	async.series([
-	    // Update all Git Repos.
-	    function (callback) {
-		winston.info( 'git.updateGitAction on ' + repo.gitIdentifier );
-		git_commands.actOnGitFiles([repo], git_commands.updateGitAction, callback);
-	    },
-	    
-	    // Compile TeX files in all repos and save the results.
-	    function (callback) {
-		winston.info( 'compileActivities on ' + repo.gitIdentifier );
-		git_commands.actOnGitFiles([repo], compileActivities, callback)
-	    },
-	    
-            // Compile Xim files in all repos and save the results.
-            function (callback) {
-		winston.info( 'compileCourses on ' + repo.gitIdentifier );
-		git_commands.actOnGitFiles([repo], compileCourses, callback);
-            },
+    github.authenticate({
+	type: "oauth",
+	token: senderAccessToken
+    });    
 
-	    // Record that this has been successful
-	    function (callback) {
-		winston.info( 'update gitrepo on ' + repo.gitIdentifier );
-		mdb.GitRepo.update( repo, {$set: { needsUpdate : false }, $unset: { feedback : '' }}, {}, function( err, document ) {
-		    callback(err);
-		} );
-	    }
+    github.statuses.create( {
+	user: repository.owner.name,
+	repo: repository.name,
+	sha: headCommit.id,
+	state: state,
+	target_url: XIMERA_URL + headCommit.id,
+	description: description
+    }, function( err, response ) {
+	if (err) 
+	    winston.error( "GitHub commit status creation error: " + err );
+	
+	winston.info( "GitHub commit status creation response: " + JSON.stringify(response) );
 
-	], function (err) {
-            if (err) {
-		mdb.GitRepo.update( repo, {$set: { feedback : err.toString('utf-8') }}, {}, function( err, document ) {} );
-		winston.error(err.toString('utf-8'));
-            }
-            //process.exit();
-	});
-
+	callback(err, null);
     });
+
+    return;
 }
 
-console.log( "whee" );
+/** @function onPush
+    Process the webhook push event
+*/
+function onPush( push )
+{
+    async.series(
+	[
+	    function(callback){
+		winston.info(" Testing for push event... ");
+		
+		if (push.finishedProcessing == true)
+		    callback("Already processed the push event");
+		else
+		    callback(null);
+		
+		return;
+	    },
+	    
+	    function(callback){
+		winston.info("Saving branch information...");
 
-//updateRepo( "bartsnapp/ximeraMajoringInMathematics" );
-updateRepo( "kisonecat/git-pull-test" );
+		var branch = new mdb.Branch();
+		branch.repository = push.repository.name;
+		branch.owner = push.repository.owner.name;
 
+		if (push.ref)
+		    branch.name = push.ref.replace( /^refs\/heads\//, '' );
+
+		if (push.headCommit)
+		    branch.commit = push.headCommit.id;
+
+		branch.lastUpdate = new Date(); // Could also be using push.repository.updated_at?
+		branch.save(callback);
+	    },
+	    
+	    function(callback){
+		updateGithubStatus( push, "pending", "Compiling Ximera files...", callback );
+	    },
+	    
+	    function(callback){
+		// do some more stuff ...
+		//callback(null, 'two');
+		//console.log( JSON.stringify( message ) );
+		//winston.info( "Updating or creating " + message );
+		//var githubIdentifier = message.repository.full_name;
+		try {
+		    updateRepo( push.repository.full_name, push.headCommit.id, callback );
+		}
+		catch (err) {
+		    callback( err, null );
+		}
+	    },
+	],
+	
+	function(err, results){
+	    if (err)
+		updateGithubStatus( push, "failure", "Ximera failed: " + err, function() {} );
+	    else
+		updateGithubStatus( push, "success", "Ximera successfully built content", function() {} );
+
+	    push.finishedProcessing = true;
+	    
+	    push.save(function(err) {
+		winston.info( "Finished processing commit SHA " + push.headCommit.id );
+	    });	    
+	}
+    );
+}
+
+////////////////////////////////////////////////////////////////
 mdb.initialize(function(error) {
-    winston.info( "I am listening for work." );
+    winston.info( "Listening for work." );
 
-    mdb.channel.on( 'update', function(message) {
-	winston.info( "Updating " + message );
-	updateRepo( message );
-    });
+    // GitPushes is a capped collection which includes data from the GitHub push webhook
+    var stream = mdb.GitPushes.find({finishedProcessing: false}).tailable({awaitdata:true, numberOfRetries: Number.MAX_VALUE}).stream();
 
-    mdb.channel.on( 'create', function(message) {
-	winston.info( "Creating " + message );
-	// Creating is no different than updating
-	updateRepo( message );
+    stream.on('data', function(push) {
+	onPush( push );
     });
 });
-
