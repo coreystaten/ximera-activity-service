@@ -510,6 +510,13 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 		callback( qemuError );
 	    });
 	},
+
+	function (callback) {
+	    winston.info( "fsync the output file descriptor" );
+	    fs.fsync(outputTarFd, function(err) {	    
+		callback(err);
+	    });
+	},
 	
 	function (callback) {
 	    winston.info( "Saving git blobs and trees..." );
