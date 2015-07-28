@@ -7,6 +7,7 @@ var async = require('async')
   , mdb = require('./mdb')
   , crypto = require('crypto')
   , githubApi = require('github')
+  , fdSlicer = require('fd-slicer')
   ;
 
 var XIMERA_URL = "https://497a6980.ngrok.com/sha/";
@@ -99,7 +100,9 @@ function createMirror( githubIdentifier, repoDirectory, callback ) {
 	    repo.config().then( function(config) {
 		winston.info( "Setting remote.origin.mirror = true for compatibility with git-core..." );
 		// There is a missing config.setBool method, but setString does the right thing in the repository's config file
-		callback( config.setString("remote.origin.mirror", "true" ), repo, origin );
+		config.setString("remote.origin.mirror", "true" ).then( function(result) {
+		    callback(null);
+		});
 	    }).catch( function(err) { callback(err); });
 	},
 	
@@ -109,28 +112,27 @@ function createMirror( githubIdentifier, repoDirectory, callback ) {
 }
 
 /** @function processMatchingFiles runs handler on each file matching extension stored in the tar file at outputTarPath
-    @param {string} outputTarPath path to the tar file to process
+    @param {string} readStream to process
     @param {string} extension
     @param {string} handler
 */
-function processMatchingFiles(outputTarPath, extension, handler, callback)
+function processMatchingFiles(readStream, extension, handler, callback)
 {
     winston.info( "Reading output tarfile for " + extension + " files..." );
     
     var finished = false;
-    try {
     
     // Queue for saving tex file content to the database
     var q = async.queue(function (task, callback) {
 	handler( task.path, task.text, callback );
     }, 2 );
-
+    
     q.drain = function() {
 	if (finished)
 	    callback(null);
     };
-
-    fs.createReadStream(outputTarPath)
+    
+    readStream
 	.pipe(tar.Parse())
 	.on("end", function(e) {
 	    if (q.length() > 0)
@@ -140,7 +142,7 @@ function processMatchingFiles(outputTarPath, extension, handler, callback)
 	})
 	.on("entry", function (e) {
 	    var path = e.props.path.replace( /^.\//, "" );
-
+	    
 	    var regexp = extension;
 	    if (typeof extension  === 'string' || extension instanceof String)
 		var regexp = new RegExp("\\." + extension + "$","g");
@@ -161,11 +163,8 @@ function processMatchingFiles(outputTarPath, extension, handler, callback)
 		});
 	    }
 	});
-    }
-    catch (err) {
-	winston.error( "Error in processMatchingFiles" );
-	callback( err, null );
-    }    
+
+    return;
 }
 
 /** @function updateCachedMirror asynchronously creates (or refreshes) a bare repo containing a mirrored copy of the repo at githubIdentifier
@@ -227,6 +226,8 @@ function updateRepo(githubIdentifier, commitSha, callback) {
     var sandboxTarPath = "";
     var overlayPath = "";
     var outputTarPath = "";
+    var outputTarFd = -1;
+    var outputTarSlicer;
     var repository = null;
     var headCommit = null;
     
@@ -241,7 +242,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	function (repoInformation, callback) {
 	    winston.info( "Creating or updating the mirror..." );
 	    updateCachedMirror( githubIdentifier, function(err, directory) {
-		console.log( "Created or updated at " + directory );
+		winston.info( "Created or updated at " + directory );
 		bareDirectory = directory;
 		callback( err ); 
 	    });
@@ -425,6 +426,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 		    callback( err );
 		} else {
 		    outputTarPath = info.path;
+		    outputTarFd = info.fd;
 		    
 		    // 50 megabytes of available output space
 		    var writeBuffer = new Buffer (1024*1024*50);
@@ -442,7 +444,8 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 				  if (err) {
 				      callback( err, overlayPath, null );
 				  } else {
-				      fs.close(info.fd, function(err) {
+				      fs.fsync(info.fd, function(err) {
+					  outputTarSlicer = fdSlicer.createFromFd(info.fd);
 					  callback( err );
 				      });
 				  }
@@ -507,11 +510,11 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 		callback( qemuError );
 	    });
 	},
-
+	
 	function (callback) {
 	    winston.info( "Saving git blobs and trees..." );
 	    
-	    processMatchingFiles(outputTarPath, new RegExp("\\.(tex|js|css)$", "g"),
+	    processMatchingFiles(outputTarSlicer.createReadStream(), new RegExp("\\.(tex|js|css)$", "g"),
 				 function( path, text, callback ) {
 				     winston.info( "Saving " + path + "..." );
 				     headCommit.getEntry(path).then(function(entry) {
@@ -543,7 +546,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	function (callback) {
 	    winston.info( "Saving log files..." );
 	    
-	    processMatchingFiles(outputTarPath, "log",
+	    processMatchingFiles(outputTarSlicer.createReadStream(), "log",
 				 function( path, text, callback ) {
 				     var texpath = path.replace( /.log$/, ".tex" );
 				     // Get the associated SHA's and...
@@ -573,7 +576,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	function (callback) {
 	    winston.info("Saving HTML files...");
 	    
-	    processMatchingFiles(outputTarPath, "html",
+	    processMatchingFiles(outputTarSlicer.createReadStream(), "html",
 				 function( path, text, callback ) {
 				     // Get the title from the filename, or the <title> tag if there is one
 				     var title = basename(path).replace(".html", "");
@@ -602,7 +605,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	
 	function (callback) {
 	    winston.info("Saving images...");
-	    processMatchingFiles(outputTarPath, new RegExp("\\.(pdf|svg|jpg|png)$", "g"),
+	    processMatchingFiles(outputTarSlicer.createReadStream(), new RegExp("\\.(pdf|svg|jpg|png)$", "g"),
 				 function( path, text, callback ) {
 				     saveToContentAddressableFilesystem( text, function(err, hash) {
 					 var gitFile = new mdb.GitFile();
@@ -615,6 +618,14 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	},
 
 	function (callback) {
+	    winston.info("Closing outputTarFd...");
+	    fs.close( outputTarFd, function(err) {
+		callback(err);
+	    });
+	},
+	
+	function (callback) {
+	    winston.info("Cleaning up temporary files...");
 	    temp.cleanup(function(err, stats) {
 		winston.info("Cleaned up " + stats.files + " temp files");
 		callback(err);
