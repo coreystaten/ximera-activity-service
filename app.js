@@ -9,7 +9,7 @@ var async = require('async')
   , githubApi = require('github')
   ;
 
-var XIMERA_URL = "https://6b1fb2f6.ngrok.com/sha/";
+var XIMERA_URL = "https://497a6980.ngrok.com/sha/";
 
 var tar = require("tar")
 , fstream = require("fstream")
@@ -118,7 +118,8 @@ function processMatchingFiles(outputTarPath, extension, handler, callback)
     winston.info( "Reading output tarfile for " + extension + " files..." );
     
     var finished = false;
-
+    try {
+    
     // Queue for saving tex file content to the database
     var q = async.queue(function (task, callback) {
 	handler( task.path, task.text, callback );
@@ -128,7 +129,7 @@ function processMatchingFiles(outputTarPath, extension, handler, callback)
 	if (finished)
 	    callback(null);
     };
-    
+
     fs.createReadStream(outputTarPath)
 	.pipe(tar.Parse())
 	.on("end", function(e) {
@@ -160,6 +161,11 @@ function processMatchingFiles(outputTarPath, extension, handler, callback)
 		});
 	    }
 	});
+    }
+    catch (err) {
+	winston.error( "Error in processMatchingFiles" );
+	callback( err, null );
+    }    
 }
 
 /** @function updateCachedMirror asynchronously creates (or refreshes) a bare repo containing a mirrored copy of the repo at githubIdentifier
@@ -235,9 +241,9 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	function (repoInformation, callback) {
 	    winston.info( "Creating or updating the mirror..." );
 	    updateCachedMirror( githubIdentifier, function(err, directory) {
-		console.log( "Created or updated!" );
+		console.log( "Created or updated at " + directory );
 		bareDirectory = directory;
-		callback( null ); 
+		callback( err ); 
 	    });
 	},
 
@@ -535,6 +541,8 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	},
 
 	function (callback) {
+	    winston.info( "Saving log files..." );
+	    
 	    processMatchingFiles(outputTarPath, "log",
 				 function( path, text, callback ) {
 				     var texpath = path.replace( /.log$/, ".tex" );
@@ -564,6 +572,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 
 	function (callback) {
 	    winston.info("Saving HTML files...");
+	    
 	    processMatchingFiles(outputTarPath, "html",
 				 function( path, text, callback ) {
 				     // Get the title from the filename, or the <title> tag if there is one
@@ -625,7 +634,6 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	    winston.error(JSON.stringify(err));
 	    winston.error(err.toString('utf-8'));
 	    console.log( "err!" );
-	    console.log( err.message() );
 	    //mdb.GitRepo.update( repo, {$set: { feedback : err.toString('utf-8') }}, {}, function( err, document ) {} );
 
         } else {
@@ -651,6 +659,9 @@ function updateGithubStatus( push, state, description, callback ) {
     
     var github = new githubApi({version: "3.0.0"});
 
+    if (!senderAccessToken)
+	return;
+    
     github.authenticate({
 	type: "oauth",
 	token: senderAccessToken
@@ -684,6 +695,8 @@ function onPush( push )
 	[
 	    function(callback){
 		winston.info(" Testing for push event... ");
+		
+		console.log( JSON.stringify(push) );
 		
 		if (push.finishedProcessing == true)
 		    callback("Already processed the push event");
@@ -752,6 +765,7 @@ mdb.initialize(function(error) {
     var stream = mdb.GitPushes.find({finishedProcessing: false}).tailable({awaitdata:true, numberOfRetries: Number.MAX_VALUE}).stream();
 
     stream.on('data', function(push) {
+	console.log( JSON.stringify(push) );
 	onPush( push );
     });
 });
