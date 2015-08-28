@@ -7,10 +7,17 @@ var async = require('async')
   , mdb = require('./mdb')
   , crypto = require('crypto')
   , githubApi = require('github')
+  , cheerio = require('cheerio')
   , fdSlicer = require('fd-slicer')
+  , pathLibrary = require('path')
   ;
 
-var XIMERA_URL = "https://497a6980.ngrok.com/sha/";
+// I wish I hadn't used a variable called "path" in so many places...  This is confusing.
+var path = pathLibrary;
+var extname = pathLibrary.extname;
+var basename = pathLibrary.basename;
+
+var XIMERA_URL = "https://ximera.osu.edu/sha/";
 
 var tar = require("tar")
 , fstream = require("fstream")
@@ -19,10 +26,6 @@ var tar = require("tar")
 
 var temp = require('temp');
 temp.track();
-
-var path = require('path');
-var extname = path.extname;
-var basename = path.basename;
 
 var exec = require('child_process').exec;
 var child_process = require('child_process');
@@ -230,6 +233,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
     var outputTarSlicer;
     var repository = null;
     var headCommit = null;
+    var xourses = [];
     
     async.waterfall([
 	// Get the repository from the repo
@@ -330,25 +334,53 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	    commands = "";
 	    commands = commands + "#!/bin/bash\n";
 	    // Change to the sandbox directory
+	    commands = commands + "systemctl stop serial-getty@ttyS0\n";
 	    commands = commands + "cd ~/sandbox\n";
 	    // Set up some of the environment
 	    commands = commands + "export HOME=/root\n";
 	    // Make the line length a bit bigger on the latex log output
 	    commands = commands + "export max_print_line=2048\n";
 	    commands = commands + "export TEXMFHOME=/root/texmf\n";
+	    // Convert the PDF files to SVG files -- no need to do this now because the tikz images will be handled automatically
+	    //commands = commands + 'find . -iname \'*.pdf\' -execdir pdf2svg {} {}.svg \\; > /dev/ttyS0\n';
+	    commands = commands + 'find . -iname \'*.pdf\' -print0 | xargs -0 -n1 bash -c \'pdf2svg $0 ${0/.pdf/.svg}\'\n';
 	    // Add the tikzexport class option to every tex file
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Adding tikzexport option... > /dev/ttyS0\n';	    	    	    
 	    commands = commands + 'find . -iname \'*.tex\' -execdir sed -i \'1s/^/\\\\PassOptionsToClass{tikzexport}{ximera}\\\\nonstopmode/\' {} \\;\n';
 	    // Run pdflatex just once on all tex files
-	    commands = commands + 'find . -iname \'*.tex\' -execdir pdflatex -shell-escape {} \\; > /dev/ttyS0\n';
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Checking health... > /dev/ttyS0\n';
+	    commands = commands + 'echo $ du > /dev/ttyS0\n';	    
+	    commands = commands + 'du > /dev/ttyS0\n';
+	    commands = commands + 'echo $ df > /dev/ttyS0\n';	    	    
+	    commands = commands + 'df > /dev/ttyS0\n';	    	    
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Running pdflatex... > /dev/ttyS0\n';	    
+	    commands = commands + 'find . -iname \'*.tex\' -execdir echo {} \\; > /dev/ttyS0\n';
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Checking health... > /dev/ttyS0\n';
+	    commands = commands + 'echo $ du > /dev/ttyS0\n';	    
+	    commands = commands + 'du > /dev/ttyS0\n';
+	    commands = commands + 'echo $ df > /dev/ttyS0\n';	    	    
+	    commands = commands + 'df > /dev/ttyS0\n';
+	    // pdflatex is needed to generate .jax files
+	    commands = commands + 'find . -iname \'*.tex\' -execdir pdflatex -file-line-error -shell-escape {} \\; > /dev/ttyS0\n';
 	    // Run tex4ht just once on all tex files
-	    commands = commands + 'find . -iname \'*.tex\' -execdir htlatex {} "ximera,charset=utf-8,-css" "" "" "--interaction=nonstopmode -shell-escape" \\; > /dev/ttyS0\n';
-	    // Convert the PDF files to SVG files -- no need to do this now because I do it from pdflatex
-	    // commands = commands + 'find . -iname \'*.pdf\' -execdir pdf2svg {} {}.svg \\; > /dev/ttyS0\n';
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Running tex4ht... > /dev/ttyS0\n';
+	    commands = commands + 'find . -iname \'*.tex\' -execdir htlatex {} "ximera,charset=utf-8,-css" "" "" "--interaction=nonstopmode -shell-escape -file-line-error" \\; > /dev/ttyS0\n';
 	    // Tidy up the html files
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Running tidy... > /dev/ttyS0\n';	    
 	    commands = commands + 'find . -iname \'*.html\' -execdir tidy -m -asxhtml -utf8 -q -i {} \\; > /dev/ttyS0\n';
-	    // Save everything to the block device
-	    commands = commands + "tar -cvf /dev/sdc .\n";
+	    // Save everything to the block device; we're using * instead of . because I don't want .git files to be tarred
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Tarring output... > /dev/ttyS0\n';	    	    
+	    commands = commands + "tar -cvf /dev/sdc * > /dev/ttyS0\n";
 	    // Exit
+	    commands = commands + 'echo -------------------------------------------------------- > /dev/ttyS0\n';
+	    commands = commands + 'echo Powering off... > /dev/ttyS0\n';	    	    	    
 	    commands = commands + "poweroff\n";
 	    
 	    fs.writeFile(path.resolve( repositoryDirectory, "sandbox.sh" ), commands, function (err,data) {
@@ -428,8 +460,8 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 		    outputTarPath = info.path;
 		    outputTarFd = info.fd;
 		    
-		    // 50 megabytes of available output space
-		    var writeBuffer = new Buffer (1024*1024*50);
+		    // 500 megabytes of available output space
+		    var writeBuffer = new Buffer (1024*1024*500);
 		    
 		    var bufferPosition = 0,
 			bufferLength = writeBuffer.length,
@@ -498,7 +530,7 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 		var secondsSinceLastOutput = process.hrtime(lastOutputTime)[0];
 
 		// If so, kill the sandbox.
-		if (secondsSinceLastOutput > 10) {
+		if (secondsSinceLastOutput > 60) {
 		    qemuError = "Too many seconds passed without output.";
 		    qemu.kill();
 		}
@@ -546,6 +578,9 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 						     blob.save(callback);
 						 },
 					     ], callback );
+				     }).catch( function(err) {
+					 // Silently ignore tex files that aren't in the git repo
+					 callback(null);
 				     });
 				 }, callback);
 	},
@@ -576,6 +611,9 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 					 
 					 compileLog.errorList = errorList;
 					 compileLog.save(callback);
+				     }).catch( function(err) {
+					 // Silently ignore log files that don't have tex files in the git repo
+					 callback(null);
 				     });
 				 }, callback);
 	},	
@@ -586,27 +624,71 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	    processMatchingFiles(outputTarSlicer.createReadStream(), "html",
 				 function( path, text, callback ) {
 				     // Get the title from the filename, or the <title> tag if there is one
-				     var title = basename(path).replace(".html", "");
-				     var re = /(<\s*title[^>]*>(.+?)<\s*\/\s*title)>/gi;
-				     var match = re.exec(text);
-				     if (match && match[2]) {
-					 title = match[2];
-				     }
+				     var $ = cheerio.load( text );
+				     var title = $('title').html();
+				     if (!(title.match( /[A-z]/ )))
+					 title = basename(path).replace(".html", "");
 
-				     // BADBAD: extract everything between body tags
-				     text = text.toString().replace(/[\s\S]*<body>/ig,'').replace(/<\/body>[\s\S]*/ig,'');
+				     if ($('meta[name="description"][content="xourse"]').length > 0) {
+					 // This is a "xourse" file which describes the global structure of a course
+					 winston.info( "Saving xourse file..." );
+					 
+					 var $ = cheerio.load( text );
+
+					 // Normalize the activity links
+					 $('a.activity').each( function() {
+					     var href = $(this).attr('href');
+					     
+					     href = pathLibrary.normalize( 
+						 pathLibrary.join( pathLibrary.dirname( path ),
+								   href )
+					     );
+
+					     href = href.replace( /\.tex$/, '' );
+					     
+					     $(this).attr('href', href);
+					 });					 
+					 
+					 var text = $('body').html();
 				     
-				     saveToContentAddressableFilesystem( text, function(err, hash) {
-					 var activity = new mdb.Activity();
+					 saveToContentAddressableFilesystem( text, function(err, hash) {
+					     var xourse = new mdb.Xourse();
+					     
+					     // Save the HTML file to the database as an xourse
+					     xourse.commit = headCommit.sha();
+					     xourse.hash = hash;
+					     xourse.path = path.replace( /.html$/, "" );
+                                             xourse.title = title;
+					     xourse.activityList = [];
+
+					     // Go through the xourse text and add the activity URLs to the activity list
+					     $('a.activity').each( function() {
+						 xourse.activityList.push( $(this).attr('href') );
+					     });
+					     
+					     // Save xourse for additional processing later
+					     xourses.push( xourse );
+					     
+					     xourse.save(callback);
+					 });
+				     } else {
+					 // This is a regular activity
 					 
-					 // Save the HTML file to the database as an activity
-					 activity.commit = headCommit.sha();
-					 activity.hash = hash;
-					 activity.path = path.replace( /.html$/, "" );
-                                         activity.title = title;
-					 
-					 activity.save(callback);
-				     });
+					 // BADBAD: extract everything between body tags
+					 text = cheerio.load( text )('body').html();
+				     
+					 saveToContentAddressableFilesystem( text, function(err, hash) {
+					     var activity = new mdb.Activity();
+					     
+					     // Save the HTML file to the database as an activity
+					     activity.commit = headCommit.sha();
+					     activity.hash = hash;
+					     activity.path = path.replace( /.html$/, "" );
+                                             activity.title = title;
+					     
+					     activity.save(callback);
+					 });
+				     }
 				 }, callback);
 	},	
 	
@@ -638,6 +720,89 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 		callback(err);
 	    });
 	},
+
+	function (callback) {
+	    winston.info("Caching activity information into xourses...");
+
+	    async.each(xourses,
+		       function(xourse, callback) {
+			   winston.info( "Processing xourse file at " + xourse.path );
+			   
+			   // Find all activities for the given xourse
+			   mdb.Activity.find( { commit: xourse.commit, path: { $in: xourse.activityList } }, function(err, activities) {
+			       if (err)
+				   callback(err);
+			       else {
+				   var activityHash = {};
+
+				   async.each(activities, function(activity, callback) {
+				       if (!(activity.path in activityHash))
+					   activityHash[activity.path] = {};
+				       
+				       activityHash[activity.path].title = activity.title;
+				       activityHash[activity.path].hash = activity.hash;				       
+				       
+				       mdb.Blob.findOne({hash: activity.hash}, function(err, blob) {
+					   winston.info( "Parsing HTML for " + activity.path );
+
+					   var $ = cheerio.load( blob.data );
+					   
+					   var images = $('img');
+					   if (images.length > 0)
+					       activityHash[activity.path].splashImage = pathLibrary.normalize( pathLibrary.join( activity.path, images.first().attr('src') ) );
+
+					   var summary = $('div.abstract');
+					   if (summary.length > 0)
+					       activityHash[activity.path].summary = summary.text();
+					   
+					   var beginning = $('p');
+					   if (beginning.length > 0)
+					       activityHash[activity.path].beginning = beginning.first().text();
+					   
+					   callback(err);
+				       });
+				   }, function(err) {
+				       xourse.activities = activityHash;
+				       xourse.markModified('activities');
+				       
+				       xourse.save(callback);
+				   });
+			       }
+			   });			   
+		       },
+		       callback);
+	},
+
+	function (callback) {
+	    winston.info("Caching all previous hashes into xourses...");
+
+	    async.each(xourses,
+		       function(xourse, callback) {
+			   winston.info( "Finding old activities for xourse at " + xourse.path );
+
+			   findOldActivities( xourse, function(err, activities) {
+			       if (err)
+				   callback(err);
+			       else {
+				   activities.forEach( function(activity) {
+				       if ( ! (activity.path in xourse.activities))
+					   xourse.activities[activity.path] = {};
+				       
+				       if ( ! ('hashes' in xourse.activities[activity.path]))
+					   xourse.activities[activity.path].hashes = [];
+				       
+				       if (xourse.activities[activity.path].hashes.indexOf( activity.hash ) < 0) {
+					   xourse.activities[activity.path].hashes.push( activity.hash );
+					   xourse.markModified('activities');
+				       }
+				   });
+				   
+				   xourse.save(callback);
+			       }
+			   });
+		       },
+		       callback);
+	},	
 	
 	function (callback) {
 	    console.log( "All done." );
@@ -659,6 +824,43 @@ function updateRepo(githubIdentifier, commitSha, callback) {
 	}
 	
 	callback( err, null );
+    });
+}
+
+/** @function findRelatedCommits
+    Given a commit hash, find all commit hashes to the same repository
+    @param {string} commit
+    @param {function} callback
+*/
+function findRelatedCommits( commit, callback ) {
+    mdb.Branch.findOne( { commit: commit }, function( err, branch ) {
+	if (err)
+	    callback(err);
+	else {
+	    mdb.Branch.find( { owner: branch.owner, repository: branch.repository }, function( err, branches ) {
+		if (err)
+		    callback(err);
+		else
+		    callback(err, branches.map( function(branch) { return branch.commit; } ) );
+	    });
+	}
+    });
+}
+
+/** @function findOldActivities
+    Dig through the database for old commits and find all the related activities
+    @param {object} xourse
+    @param {function} callback
+*/
+function findOldActivities( xourse, callback ) {
+    findRelatedCommits( xourse.commit, function(err, commits) {
+	if (err)
+	    callback(err);
+	else {
+	    mdb.Activity.find( { commit: { $in: commits } }, function( err, activities ) {
+		callback( err, activities );
+	    });
+	}
     });
 }
 
@@ -767,6 +969,7 @@ function onPush( push )
 		updateGithubStatus( push, "success", "Ximera successfully built content", function() {} );
 
 	    push.finishedProcessing = true;
+	    push.markModified( 'finishedProcessing' );
 	    
 	    push.save(function(err) {
 		winston.info( "Finished processing commit SHA " + push.headCommit.id );
@@ -780,7 +983,7 @@ mdb.initialize(function(error) {
     winston.info( "Listening for work." );
 
     // GitPushes is a capped collection which includes data from the GitHub push webhook
-    var stream = mdb.GitPushes.find({finishedProcessing: false}).tailable({awaitdata:true, numberOfRetries: Number.MAX_VALUE}).stream();
+    var stream = mdb.GitPushes.find({finishedProcessing: {$ne: true}}).tailable({awaitdata:true, numberOfRetries: Number.MAX_VALUE}).stream();
 
     stream.on('data', function(push) {
 	console.log( JSON.stringify(push) );

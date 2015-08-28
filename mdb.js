@@ -13,6 +13,7 @@ var Mixed = mongoose.Schema.Types.Mixed;
 var url = 'mongodb://' + process.env.XIMERA_MONGO_URL + "/" +
                  process.env.XIMERA_MONGO_DATABASE;
 
+console.log( url );
 
 // Notice this is different from Schema.ObjectId; Schema.ObjectId if for passing
 // models/schemas, Types.ObjectId is for generating ObjectIds.
@@ -47,16 +48,31 @@ exports.initialize = function initialize(callback) {
                                          feedback: String,
                                          currentActivities: [ObjectId]
                                      });
-
+    
     exports.Branch = mongoose.model("Branch",
-                                     {
-                                         owner: {type: String, index: true},
-					 repository: {type: String, index: true},
-					 name: {type: String, index: true},
-					 commit: String,
-                                         lastUpdate: {type: Date, index: true},
-                                     });
+                                    {
+                                        owner: {type: String, index: true},
+					repository: {type: String, index: true},
+					name: {type: String, index: true},
+					commit: String,
+                                        lastUpdate: {type: Date, index: true},
+                                    });
 
+    // These records are designed to conform to the TinCan API 1.0.0
+    exports.LearningRecord = mongoose.model("LearningRecord",
+					    {
+						actor: {type: ObjectId, ref:"User"},
+						verbId: String,
+						object: Mixed,
+						result: Mixed,
+						context: Mixed,
+						timestamp: Date,
+						stored: Date,
+						authority: Mixed,
+						version: String,
+						attachments: Mixed
+					    });    
+    
     // 128 megabytes of compile logs
     var CompileLogSchema = new mongoose.Schema(
 	{
@@ -84,6 +100,18 @@ exports.initialize = function initialize(callback) {
 				      data: Buffer
 				  });
 
+    exports.Xourse = mongoose.model("Xourse",
+				    {
+                                        timeLastUsed: {type: Date, index: true},
+					commit: {type: String, index: true},
+					path: String,
+					hash: {type: String, index: true},
+                                        title: String,
+                                        activityList: Mixed,
+                                        activities: Mixed,
+				    }
+				   );
+    
     exports.Activity = mongoose.model("Activity",
                                       {
 					  // deprecated
@@ -132,6 +160,7 @@ exports.initialize = function initialize(callback) {
                                       isInstructor: Boolean
                                   });
 
+    // Deprecated
     exports.Scope = mongoose.model("Scope",
                                    new mongoose.Schema({
                                        activity: ObjectId,
@@ -141,6 +170,15 @@ exports.initialize = function initialize(callback) {
                                        minimize: false
                                    }));
 
+    exports.State = mongoose.model("State",
+                                   new mongoose.Schema({
+                                       activityHash: String,
+                                       user: ObjectId,
+                                       data: Mixed
+                                   }, {
+                                       minimize: false
+                                   }));    
+    
     exports.Post = mongoose.model("Post",
                                    new mongoose.Schema({
                                        room: {type: String, index: true},
